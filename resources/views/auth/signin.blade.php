@@ -24,14 +24,29 @@ class="authentication-bg"
                             <h4 class="fw-bold text-dark mb-2">Welcome Back!</h3>
                                 <p class="text-muted">Sign in to your account to continue</p>
                         </div>
+
+                        @if ($errors->any())
+                            <div class="alert alert-danger mt-3" role="alert">
+                                <div class="fw-semibold mb-1">Login failed</div>
+                                <ul class="mb-0 ps-3">
+                                    @foreach ($errors->all() as $message)
+                                        <li>{{ $message }}</li>
+                                    @endforeach
+                                </ul>
+                            </div>
+                        @endif
+
                         <form method="POST" action="{{ route('login') }}" class="mt-4">
 
                             @csrf
 
                             <div class="mb-3">
                                 <label for="email" class="form-label">Email Address</label>
-                                <input type="email" class="form-control" id="email" name="email" value="user@demo.com"
+                                <input type="email" class="form-control @error('email') is-invalid @enderror" id="email" name="email" value="{{ old('email', 'user@demo.com') }}"
                                     placeholder="Enter your email">
+                                @error('email')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
                             </div>
                             <div class="mb-3">
                                 <div class="d-flex justify-content-between align-items-center">
@@ -39,11 +54,14 @@ class="authentication-bg"
                                     <a href="{{ route('second', ['auth', 'password']) }}"
                                         class="text-decoration-none small text-muted">Forgot password?</a>
                                 </div>
-                                <input type="password" class="form-control" id="password" name="password" value="password"
+                                <input type="password" class="form-control @error('password') is-invalid @enderror" id="password" name="password" value="password"
                                     placeholder="Enter your password">
+                                @error('password')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
                             </div>
                             <div class="form-check mb-3">
-                                <input type="checkbox" class="form-check-input" id="remember-me">
+                                <input type="checkbox" class="form-check-input" id="remember-me" name="remember" value="1" @checked(old('remember'))>
                                 <label class="form-check-label" for="remember-me">Remember me</label>
                             </div>
                             <div class="d-grid">
