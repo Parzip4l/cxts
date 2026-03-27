@@ -56,6 +56,17 @@ class OperationsDashboardController extends Controller
         ]);
     }
 
+    public function report(Request $request): View
+    {
+        $filters = $this->filters($request);
+
+        return view('modules.dashboard.operations.report', [
+            'filters' => $filters,
+            'data' => $this->dashboardService->executiveReport($request->user(), $filters),
+            'filterOptions' => $this->filterOptions(),
+        ]);
+    }
+
     public function myPerformance(Request $request): View
     {
         $filters = $this->filters($request);

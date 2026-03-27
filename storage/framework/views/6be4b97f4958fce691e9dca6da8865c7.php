@@ -3,6 +3,8 @@
 <?php
     $workEndedAt = $ticket->completed_at ?? $ticket->resolved_at ?? $ticket->closed_at;
     $workDurationMinutes = ($ticket->started_at && $workEndedAt) ? $ticket->started_at->diffInMinutes($workEndedAt) : null;
+    $ticketAgeHours = $ticket->created_at ? $ticket->created_at->diffInHours(now()) : null;
+    $responseRiskLabel = null;
     $currentUser = auth()->user();
     $approvalActivities = $ticket->activities->filter(fn ($activity) => in_array($activity->activity_type, ['ticket_approved', 'ticket_rejected', 'ticket_ready_for_assignment'], true))->values();
     $strategyLabels = \App\Models\TicketCategory::approverStrategies();
@@ -66,6 +68,46 @@
             default => 'bg-secondary-subtle text-secondary',
         };
     };
+    $ticketStatusBadgeClass = function ($statusCode) {
+        return match (strtolower((string) $statusCode)) {
+            'new', 'open', 'assigned' => 'bg-primary-subtle text-primary',
+            'pending_approval', 'on_hold' => 'bg-warning-subtle text-warning',
+            'in_progress' => 'bg-info-subtle text-info',
+            'completed', 'closed' => 'bg-success-subtle text-success',
+            'rejected' => 'bg-danger-subtle text-danger',
+            default => 'bg-secondary-subtle text-secondary',
+        };
+    };
+    $priorityBadgeClass = function ($priorityName) {
+        return match (strtolower((string) $priorityName)) {
+            'critical' => 'bg-danger-subtle text-danger',
+            'high' => 'bg-warning-subtle text-warning',
+            'medium' => 'bg-info-subtle text-info',
+            'low' => 'bg-success-subtle text-success',
+            default => 'bg-secondary-subtle text-secondary',
+        };
+    };
+    $approvalStatusBadgeClass = function ($approvalStatus) {
+        return match ($approvalStatus) {
+            \App\Models\Ticket::APPROVAL_STATUS_PENDING => 'bg-warning-subtle text-warning',
+            \App\Models\Ticket::APPROVAL_STATUS_APPROVED => 'bg-success-subtle text-success',
+            \App\Models\Ticket::APPROVAL_STATUS_REJECTED => 'bg-danger-subtle text-danger',
+            default => 'bg-secondary-subtle text-secondary',
+        };
+    };
+    $responseRiskBadgeClass = 'bg-secondary-subtle text-secondary';
+    if ($ticket->response_due_at) {
+        if ($ticket->responded_at) {
+            $responseRiskLabel = 'Responded';
+            $responseRiskBadgeClass = 'bg-success-subtle text-success';
+        } elseif ($ticket->response_due_at->isPast()) {
+            $responseRiskLabel = 'Overdue';
+            $responseRiskBadgeClass = 'bg-danger-subtle text-danger';
+        } else {
+            $responseRiskLabel = 'On Track';
+            $responseRiskBadgeClass = 'bg-info-subtle text-info';
+        }
+    }
     $engineerCustomProperties = function ($option) {
         return [
             'department_name' => $option->department_name ?? 'No department',
@@ -97,15 +139,131 @@
                     </div>
                 <?php endif; ?>
 
-                <div class="d-flex justify-content-between align-items-start mb-3">
-                    <div>
-                        <h5 class="mb-1"><?php echo e($ticket->title); ?></h5>
-                        <p class="text-muted mb-0"><?php echo e($ticket->ticket_number); ?></p>
+                <div class="rounded-4 border bg-light-subtle p-4 mb-4">
+                    <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-3">
+                        <div>
+                            <div class="small text-muted text-uppercase fw-semibold mb-2">Executive Summary</div>
+                            <h4 class="mb-2"><?php echo e($ticket->title); ?></h4>
+                            <div class="d-flex flex-wrap gap-2">
+                                <span class="badge bg-dark-subtle text-dark border"><?php echo e($ticket->ticket_number); ?></span>
+                                <span class="badge <?php echo e($ticketStatusBadgeClass($ticket->status?->code)); ?>"><?php echo e($ticket->status?->name ?? '-'); ?></span>
+                                <span class="badge <?php echo e($priorityBadgeClass($ticket->priority?->name)); ?>"><?php echo e($ticket->priority?->name ?? 'No Priority'); ?></span>
+                                <span class="badge <?php echo e($approvalStatusBadgeClass($ticket->approval_status)); ?>"><?php echo e($ticket->approvalStatusLabel()); ?></span>
+                                <?php if($responseRiskLabel): ?>
+                                    <span class="badge <?php echo e($responseRiskBadgeClass); ?>">Response <?php echo e($responseRiskLabel); ?></span>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                        <div class="text-lg-end">
+                            <div class="small text-muted">Requester</div>
+                            <div class="fw-semibold"><?php echo e($ticket->requester?->name ?? '-'); ?></div>
+                            <div class="small text-muted"><?php echo e($ticket->requesterDepartment?->name ?? 'No department'); ?></div>
+                        </div>
                     </div>
-                    <span class="badge bg-secondary-subtle text-secondary"><?php echo e($ticket->status?->name ?? '-'); ?></span>
+
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <div class="rounded-3 border bg-white p-3 h-100">
+                                <div class="small text-muted mb-1">Current Owner</div>
+                                <div class="fw-semibold"><?php echo e($ticket->assignedEngineer?->name ?? 'Unassigned'); ?></div>
+                                <div class="small text-muted"><?php echo e($ticket->assigned_team_name ?? 'No team assigned'); ?></div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="rounded-3 border bg-white p-3 h-100">
+                                <div class="small text-muted mb-1">Expected Approver</div>
+                                <div class="fw-semibold"><?php echo e($ticket->expectedApproverDisplayName()); ?></div>
+                                <div class="small text-muted"><?php echo e($ticket->flowPolicySourceLabel()); ?></div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="rounded-3 border bg-white p-3 h-100">
+                                <div class="small text-muted mb-1">Ticket Age</div>
+                                <div class="fw-semibold"><?php echo e($ticketAgeHours !== null ? number_format($ticketAgeHours) . ' hours' : '-'); ?></div>
+                                <div class="small text-muted"><?php echo e(optional($ticket->created_at)->format('d M Y H:i') ?? 'Unknown created time'); ?></div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="rounded-3 border bg-white p-3 h-100">
+                                <div class="small text-muted mb-1">Work Duration</div>
+                                <div class="fw-semibold"><?php echo e($workDurationMinutes !== null ? $workDurationMinutes.' min' : '-'); ?></div>
+                                <div class="small text-muted">Started to completed/resolved</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
-                <p class="mb-3"><?php echo e($ticket->description); ?></p>
+                <div class="row g-3 mb-4">
+                    <div class="col-md-3">
+                        <div class="rounded-3 border bg-light-subtle p-3 h-100">
+                            <div class="text-muted small mb-1">Approval Status</div>
+                            <div class="fw-semibold"><?php echo e($ticket->approvalStatusLabel()); ?></div>
+                            <div class="small text-muted"><?php echo e($ticket->requires_approval ? 'Approval gate active' : 'No approval gate'); ?></div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="rounded-3 border bg-light-subtle p-3 h-100">
+                            <div class="text-muted small mb-1">Assignment Gate</div>
+                            <div class="fw-semibold"><?php echo e($ticket->canBeAssigned() ? 'Ready' : 'Blocked'); ?></div>
+                            <div class="small text-muted"><?php echo e($ticket->allow_direct_assignment ? 'Direct assignment allowed' : 'Ready flag required'); ?></div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="rounded-3 border bg-light-subtle p-3 h-100">
+                            <div class="text-muted small mb-1">Expected Approver</div>
+                            <div class="fw-semibold"><?php echo e($ticket->expectedApproverDisplayName()); ?></div>
+                            <div class="small text-muted"><?php echo e($ticket->flowPolicySourceLabel()); ?></div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="rounded-3 border bg-light-subtle p-3 h-100">
+                            <div class="text-muted small mb-1">Work Duration</div>
+                            <div class="fw-semibold"><?php echo e($workDurationMinutes !== null ? $workDurationMinutes.' min' : '-'); ?></div>
+                            <div class="small text-muted">Started to completed/resolved</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row g-3 mb-4">
+                    <div class="col-lg-7">
+                        <div class="rounded-3 border bg-light-subtle p-3 h-100">
+                            <div class="small text-muted text-uppercase fw-semibold mb-2">Issue Brief</div>
+                            <p class="mb-3"><?php echo e($ticket->description); ?></p>
+                            <div class="d-flex flex-wrap gap-2">
+                                <span class="badge bg-white text-dark border">Service: <?php echo e($ticket->service?->name ?? 'No related service'); ?></span>
+                                <span class="badge bg-white text-dark border">Asset: <?php echo e($ticket->asset?->name ?? 'No related asset'); ?></span>
+                                <span class="badge bg-white text-dark border">Inspection: <?php echo e($ticket->inspection?->inspection_number ?? 'No linked inspection'); ?></span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-5">
+                        <div class="rounded-3 border p-3 h-100">
+                            <div class="small text-muted text-uppercase fw-semibold mb-3">Timeline Snapshot</div>
+                            <div class="d-flex flex-column gap-3">
+                                <div class="d-flex justify-content-between gap-3">
+                                    <div class="text-muted small">Created</div>
+                                    <div class="fw-medium text-end"><?php echo e(optional($ticket->created_at)->format('d M Y H:i') ?? '-'); ?></div>
+                                </div>
+                                <div class="d-flex justify-content-between gap-3">
+                                    <div class="text-muted small">Response Due</div>
+                                    <div class="fw-medium text-end"><?php echo e(optional($ticket->response_due_at)->format('d M Y H:i') ?? '-'); ?></div>
+                                </div>
+                                <div class="d-flex justify-content-between gap-3">
+                                    <div class="text-muted small">Resolution Due</div>
+                                    <div class="fw-medium text-end"><?php echo e(optional($ticket->resolution_due_at)->format('d M Y H:i') ?? '-'); ?></div>
+                                </div>
+                                <div class="d-flex justify-content-between gap-3">
+                                    <div class="text-muted small">Started</div>
+                                    <div class="fw-medium text-end"><?php echo e(optional($ticket->started_at)->format('d M Y H:i') ?? '-'); ?></div>
+                                </div>
+                                <div class="d-flex justify-content-between gap-3">
+                                    <div class="text-muted small">Completed</div>
+                                    <div class="fw-medium text-end"><?php echo e(optional($ticket->completed_at)->format('d M Y H:i') ?? '-'); ?></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
                 <div class="mb-4">
                     <div class="d-flex align-items-center justify-content-between mb-2">
@@ -148,46 +306,96 @@
                     <?php endif; ?>
                 </div>
 
-                <div class="row g-2 small">
-                    <div class="col-md-6"><strong>Requester:</strong> <?php echo e($ticket->requester?->name ?? '-'); ?></div>
-                    <div class="col-md-6"><strong>Department:</strong> <?php echo e($ticket->requesterDepartment?->name ?? '-'); ?></div>
-                    <div class="col-md-6"><strong>Ticket Type:</strong> <?php echo e($ticket->category?->name ?? '-'); ?></div>
-                    <div class="col-md-6"><strong>Ticket Category:</strong> <?php echo e($ticket->subcategory?->name ?? '-'); ?></div>
-                    <div class="col-md-6"><strong>Ticket Sub Category:</strong> <?php echo e($ticket->detailSubcategory?->name ?? '-'); ?></div>
-                    <div class="col-md-6"><strong>Priority:</strong> <?php echo e($ticket->priority?->name ?? '-'); ?></div>
-                    <div class="col-md-6"><strong>Related Service:</strong> <?php echo e($ticket->service?->name ?? '-'); ?></div>
-                    <div class="col-md-6"><strong>Related Asset:</strong> <?php echo e($ticket->asset?->name ?? '-'); ?></div>
-                    <div class="col-md-6"><strong>Asset Location:</strong> <?php echo e($ticket->assetLocation?->name ?? '-'); ?></div>
-                    <div class="col-md-6"><strong>Linked Inspection Task:</strong> <?php echo e($ticket->inspection?->inspection_number ?? '-'); ?></div>
-                    <div class="col-md-6"><strong>Assigned Team:</strong> <?php echo e($ticket->assigned_team_name ?? '-'); ?></div>
-                    <div class="col-md-6"><strong>Assigned Engineer:</strong> <?php echo e($ticket->assignedEngineer?->name ?? '-'); ?></div>
-                    <div class="col-md-6">
-                        <strong>Approval Rule:</strong>
-                        <?php if($ticket->requires_approval): ?>
-                            <span class="badge bg-warning-subtle text-warning">Approval Required</span>
-                        <?php else: ?>
-                            <span class="badge bg-success-subtle text-success">No Approval Needed</span>
-                        <?php endif; ?>
+                <div class="row g-3 small">
+                    <div class="col-lg-4">
+                        <div class="rounded-3 border p-3 h-100 bg-white">
+                            <div class="text-muted small text-uppercase fw-semibold mb-3">Business Context</div>
+                            <div class="d-flex flex-column gap-3">
+                                <div>
+                                    <div class="text-muted small">Requester</div>
+                                    <div class="fw-medium"><?php echo e($ticket->requester?->name ?? '-'); ?></div>
+                                </div>
+                                <div>
+                                    <div class="text-muted small">Department</div>
+                                    <div class="fw-medium"><?php echo e($ticket->requesterDepartment?->name ?? '-'); ?></div>
+                                </div>
+                                <div>
+                                    <div class="text-muted small">Service</div>
+                                    <div class="fw-medium"><?php echo e($ticket->service?->name ?? '-'); ?></div>
+                                </div>
+                                <div>
+                                    <div class="text-muted small">Asset / Location</div>
+                                    <div class="fw-medium"><?php echo e($ticket->asset?->name ?? '-'); ?></div>
+                                    <div class="text-muted"><?php echo e($ticket->assetLocation?->name ?? 'No location'); ?></div>
+                                </div>
+                                <div>
+                                    <div class="text-muted small">Linked Inspection Task</div>
+                                    <div class="fw-medium"><?php echo e($ticket->inspection?->inspection_number ?? '-'); ?></div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="col-md-6">
-                        <strong>Assignment Rule:</strong>
-                        <?php if($ticket->allow_direct_assignment): ?>
-                            <span class="badge bg-success-subtle text-success">Direct Assignment Allowed</span>
-                        <?php else: ?>
-                            <span class="badge bg-secondary-subtle text-secondary">Needs Ready Flag</span>
-                        <?php endif; ?>
+                    <div class="col-lg-4">
+                        <div class="rounded-3 border p-3 h-100 bg-white">
+                            <div class="text-muted small text-uppercase fw-semibold mb-3">Routing & Ownership</div>
+                            <div class="d-flex flex-column gap-3">
+                                <div>
+                                    <div class="text-muted small">Ticket Taxonomy</div>
+                                    <div class="fw-medium"><?php echo e($ticket->category?->name ?? '-'); ?></div>
+                                    <div class="text-muted"><?php echo e($ticket->subcategory?->name ?? '-'); ?> · <?php echo e($ticket->detailSubcategory?->name ?? '-'); ?></div>
+                                </div>
+                                <div>
+                                    <div class="text-muted small">Assigned Engineer</div>
+                                    <div class="fw-medium"><?php echo e($ticket->assignedEngineer?->name ?? '-'); ?></div>
+                                    <div class="text-muted"><?php echo e($ticket->assigned_team_name ?? 'No team assigned'); ?></div>
+                                </div>
+                                <div>
+                                    <div class="text-muted small">Expected Approver</div>
+                                    <div class="fw-medium"><?php echo e($ticket->expectedApprover?->name ?? $ticket->expected_approver_name_snapshot ?? 'Supervisor/Admin Fallback'); ?></div>
+                                    <div class="text-muted"><?php echo e(str($ticket->flow_policy_source ?? 'system_default')->replace('_', ' ')->title()); ?></div>
+                                </div>
+                                <div>
+                                    <div class="text-muted small">Approval Notes</div>
+                                    <div class="fw-medium"><?php echo e($ticket->approval_notes ?: '-'); ?></div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="col-md-6"><strong>Approval Status:</strong> <?php echo e(str($ticket->approval_status ?? 'not_required')->replace('_', ' ')->title()); ?></div>
-                    <div class="col-md-6"><strong>Rule Source:</strong> <?php echo e(str($ticket->flow_policy_source ?? 'system_default')->replace('_', ' ')->title()); ?></div>
-                    <div class="col-md-6"><strong>Expected Approver:</strong> <?php echo e($ticket->expectedApprover?->name ?? $ticket->expected_approver_name_snapshot ?? 'Supervisor/Admin Fallback'); ?></div>
-                    <div class="col-md-6"><strong>Approved By:</strong> <?php echo e($ticket->approvedBy?->name ?? '-'); ?></div>
-                    <div class="col-md-6"><strong>Ready For Assignment By:</strong> <?php echo e($ticket->assignmentReadyBy?->name ?? '-'); ?></div>
-                    <div class="col-md-6"><strong>Approval Notes:</strong> <?php echo e($ticket->approval_notes ?: '-'); ?></div>
-                    <div class="col-md-6"><strong>Response Due:</strong> <?php echo e(optional($ticket->response_due_at)->format('Y-m-d H:i') ?? '-'); ?></div>
-                    <div class="col-md-6"><strong>Resolution Due:</strong> <?php echo e(optional($ticket->resolution_due_at)->format('Y-m-d H:i') ?? '-'); ?></div>
-                    <div class="col-md-6"><strong>Started At:</strong> <?php echo e(optional($ticket->started_at)->format('Y-m-d H:i') ?? '-'); ?></div>
-                    <div class="col-md-6"><strong>Completed At:</strong> <?php echo e(optional($ticket->completed_at)->format('Y-m-d H:i') ?? '-'); ?></div>
-                    <div class="col-md-6"><strong>Work Duration:</strong> <?php echo e($workDurationMinutes !== null ? $workDurationMinutes.' minute(s)' : '-'); ?></div>
+                    <div class="col-lg-4">
+                        <div class="rounded-3 border p-3 h-100 bg-white">
+                            <div class="text-muted small text-uppercase fw-semibold mb-3">Governance Snapshot</div>
+                            <div class="d-flex flex-column gap-3">
+                                <div>
+                                    <div class="text-muted small">Approval Rule</div>
+                                    <?php if($ticket->requires_approval): ?>
+                                        <span class="badge bg-warning-subtle text-warning">Approval Required</span>
+                                    <?php else: ?>
+                                        <span class="badge bg-success-subtle text-success">No Approval Needed</span>
+                                    <?php endif; ?>
+                                </div>
+                                <div>
+                                    <div class="text-muted small">Assignment Rule</div>
+                                    <?php if($ticket->allow_direct_assignment): ?>
+                                        <span class="badge bg-success-subtle text-success">Direct Assignment Allowed</span>
+                                    <?php else: ?>
+                                        <span class="badge bg-secondary-subtle text-secondary">Needs Ready Flag</span>
+                                    <?php endif; ?>
+                                </div>
+                                <div>
+                                    <div class="text-muted small">Approved By</div>
+                                    <div class="fw-medium"><?php echo e($ticket->approvedBy?->name ?? '-'); ?></div>
+                                </div>
+                                <div>
+                                    <div class="text-muted small">Ready For Assignment By</div>
+                                    <div class="fw-medium"><?php echo e($ticket->assignmentReadyBy?->name ?? '-'); ?></div>
+                                </div>
+                                <div>
+                                    <div class="text-muted small">Last Milestone</div>
+                                    <div class="fw-medium"><?php echo e(optional($workEndedAt)->format('d M Y H:i') ?? optional($ticket->started_at)->format('d M Y H:i') ?? '-'); ?></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="mt-4">

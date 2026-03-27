@@ -75,6 +75,30 @@ class OperationsDashboardService
         ];
     }
 
+    public function executiveReport(?User $actor, array $filters = []): array
+    {
+        [$from, $to] = $this->resolvePeriod($filters);
+        $current = $this->reportSnapshot($actor, $from, $to, $filters);
+
+        $comparisons = collect([
+            $this->comparisonWindow('vs_7_days', 'Vs 7 Hari Sebelumnya', $current, $actor, $from->subDays(7), $to->subDays(7), $filters),
+            $this->comparisonWindow('vs_1_month', 'Vs 1 Bulan Sebelumnya', $current, $actor, $from->subMonth(), $to->subMonth(), $filters),
+            $this->comparisonWindow('vs_1_year', 'Vs 1 Tahun Sebelumnya', $current, $actor, $from->subYear(), $to->subYear(), $filters),
+        ])->keyBy('key');
+
+        $primaryComparison = $comparisons->get('vs_1_month') ?? $comparisons->first();
+
+        return [
+            'current' => $current,
+            'comparisons' => $comparisons->values()->all(),
+            'primary_comparison_key' => $primaryComparison['key'] ?? null,
+            'executive_summary' => $this->executiveSummary($current, $primaryComparison),
+            'action_plan' => $this->actionPlan($current, $primaryComparison),
+            'top_risks' => $this->topRisks($current, $primaryComparison),
+            'top_improvement_areas' => $this->topImprovementAreas($current, $primaryComparison),
+        ];
+    }
+
     private function ticketSummary(?User $actor, CarbonImmutable $from, CarbonImmutable $to, array $filters = []): array
     {
         $now = CarbonImmutable::now();
@@ -108,6 +132,529 @@ class OperationsDashboardService
                 ->count(),
             'avg_response_minutes' => $avgResponseMinutes !== null ? round((float) $avgResponseMinutes, 2) : null,
             'avg_resolution_minutes' => $avgResolutionMinutes !== null ? round((float) $avgResolutionMinutes, 2) : null,
+        ];
+    }
+
+    private function reportSnapshot(?User $actor, CarbonImmutable $from, CarbonImmutable $to, array $filters = []): array
+    {
+        $summary = $this->ticketSummary($actor, $from, $to, $filters);
+        $sla = $this->slaSummary($actor, $from, $to, $filters);
+        $inspection = $this->inspectionSummary($actor, $from, $to);
+        $engineers = $this->engineerStats($actor, $from, $to, $filters)->values();
+
+        $totalAssigned = (int) $engineers->sum('assigned_tickets');
+        $totalCompleted = (int) $engineers->sum('completed_tickets');
+        $completionRate = $this->percentage($summary['completed_tickets'] ?? 0, $summary['total_tickets'] ?? 0);
+
+        return [
+            'period' => $this->serializePeriod($from, $to),
+            'summary' => $summary,
+            'sla' => $sla,
+            'inspection' => $inspection,
+            'engineer' => [
+                'engineer_count' => $engineers->count(),
+                'total_assigned_tickets' => $totalAssigned,
+                'total_completed_tickets' => $totalCompleted,
+                'overall_completion_rate' => $this->percentage($totalCompleted, $totalAssigned),
+                'avg_effectiveness_score' => round((float) $engineers->avg('effectiveness_score'), 2),
+                'total_worklog_minutes' => (int) $engineers->sum('total_worklog_minutes'),
+            ],
+            'derived' => [
+                'completion_rate' => $completionRate,
+                'abnormal_rate' => $inspection['submitted_inspections'] > 0
+                    ? round(($inspection['abnormal_inspections'] / max(1, $inspection['submitted_inspections'])) * 100, 2)
+                    : 0.0,
+            ],
+            'report_structure' => $this->reportStructure($actor, $from, $to, $filters, 5),
+        ];
+    }
+
+    private function comparisonWindow(
+        string $key,
+        string $label,
+        array $current,
+        ?User $actor,
+        CarbonImmutable $comparisonFrom,
+        CarbonImmutable $comparisonTo,
+        array $filters = []
+    ): array {
+        $comparison = $this->reportSnapshot($actor, $comparisonFrom, $comparisonTo, $filters);
+
+        $delta = [
+            'ticket_volume' => $this->metricDelta($current['summary']['total_tickets'], $comparison['summary']['total_tickets']),
+            'completion_rate' => $this->metricDelta($current['derived']['completion_rate'], $comparison['derived']['completion_rate']),
+            'response_compliance' => $this->metricDelta($current['sla']['response']['compliance_rate'], $comparison['sla']['response']['compliance_rate']),
+            'resolution_compliance' => $this->metricDelta($current['sla']['resolution']['compliance_rate'], $comparison['sla']['resolution']['compliance_rate']),
+            'avg_effectiveness_score' => $this->metricDelta($current['engineer']['avg_effectiveness_score'], $comparison['engineer']['avg_effectiveness_score']),
+            'abnormal_inspections' => $this->metricDelta($current['inspection']['abnormal_inspections'], $comparison['inspection']['abnormal_inspections'], false),
+            'overdue_resolution_tickets' => $this->metricDelta($current['summary']['overdue_resolution_tickets'], $comparison['summary']['overdue_resolution_tickets'], false),
+            'unassigned_tickets' => $this->metricDelta($current['summary']['unassigned_tickets'], $comparison['summary']['unassigned_tickets'], false),
+        ];
+
+        return [
+            'key' => $key,
+            'label' => $label,
+            'period' => $comparison['period'],
+            'snapshot' => $comparison,
+            'delta' => $delta,
+            'status' => $this->comparisonStatus($delta),
+            'drivers' => $this->comparisonDrivers($current, $comparison, $delta),
+        ];
+    }
+
+    private function executiveSummary(array $current, ?array $comparison): array
+    {
+        if ($comparison === null) {
+            return [
+                'headline' => 'Belum ada baseline pembanding yang cukup untuk periode yang dipilih.',
+                'tone' => 'stable',
+                'highlights' => [],
+                'note' => 'Ringkasan akan otomatis muncul ketika periode aktif punya pembanding historis yang relevan.',
+            ];
+        }
+
+        $headline = match ($comparison['status']) {
+            'improved' => "Secara umum, performa operasional pada periode ini membaik dibanding {$comparison['label']}.",
+            'declined' => "Secara umum, performa operasional pada periode ini menurun dibanding {$comparison['label']}.",
+            default => "Performa operasional pada periode ini cenderung campuran dibanding {$comparison['label']}.",
+        };
+
+        return [
+            'headline' => $headline,
+            'tone' => $comparison['status'],
+            'highlights' => $comparison['drivers'],
+            'note' => 'Ringkasan ini dibuat otomatis dari perubahan volume ticket, SLA, hasil inspection, distribusi taxonomy, dan efektivitas engineer pada data aktual.',
+        ];
+    }
+
+    private function actionPlan(array $current, ?array $comparison): array
+    {
+        if ($comparison === null) {
+            return [[
+                'priority' => 'Monitoring',
+                'title' => 'Lengkapi baseline pembanding',
+                'owner' => 'Operations Lead',
+                'timeframe' => 'Periode berikutnya',
+                'message' => 'Perlu baseline historis yang memadai agar rekomendasi otomatis bisa lebih tajam dan tidak hanya bersifat observasional.',
+            ]];
+        }
+
+        $actions = [];
+        $delta = $comparison['delta'];
+
+        if (
+            $current['sla']['response']['compliance_rate'] < 90
+            || $delta['response_compliance']['impact'] < 0
+            || $delta['unassigned_tickets']['impact'] < 0
+        ) {
+            $actions[] = [
+                'priority' => 'Immediate',
+                'title' => 'Perkuat triage dan assignment awal',
+                'owner' => 'Service Desk Supervisor',
+                'timeframe' => '24-48 jam',
+                'message' => 'Response SLA sedang tertekan atau ticket tanpa engineer bertambah. Fokuskan review pada aturan dispatch, kapasitas first response, dan backlog ticket yang belum punya owner.',
+            ];
+        }
+
+        if (
+            $current['sla']['resolution']['compliance_rate'] < 85
+            || $delta['resolution_compliance']['impact'] < 0
+            || $delta['overdue_resolution_tickets']['impact'] < 0
+        ) {
+            $actions[] = [
+                'priority' => 'Immediate',
+                'title' => 'Lakukan backlog recovery untuk ticket overdue',
+                'owner' => 'Ops Admin / Supervisor',
+                'timeframe' => 'Minggu ini',
+                'message' => 'Ada indikasi penurunan ketepatan penyelesaian. Prioritaskan clearance pada ticket overdue, evaluasi bottleneck approval/assignment, dan siapkan jalur eskalasi untuk kasus yang paling lama terbuka.',
+            ];
+        }
+
+        if ($delta['ticket_volume']['direction'] === 'up' && abs((float) ($delta['ticket_volume']['percentage_change'] ?? 0)) >= 10) {
+            $actions[] = [
+                'priority' => 'High',
+                'title' => 'Sesuaikan kapasitas dengan kenaikan demand',
+                'owner' => 'Operations Lead',
+                'timeframe' => '1-2 minggu',
+                'message' => 'Volume ticket naik signifikan terhadap baseline. Pertimbangkan penyesuaian shift, redistribusi engineer, atau fokus pada taxonomy dengan lonjakan tertinggi agar kualitas layanan tetap terjaga.',
+            ];
+        }
+
+        if ($delta['abnormal_inspections']['direction'] === 'up') {
+            $actions[] = [
+                'priority' => 'High',
+                'title' => 'Tindak lanjuti sumber abnormal inspection',
+                'owner' => 'Inspection Coordinator',
+                'timeframe' => 'Minggu ini',
+                'message' => 'Temuan abnormal meningkat dan berpotensi menambah ticket lanjutan. Review aset/lokasi dengan temuan berulang lalu buat tindakan korektif sebelum berubah menjadi beban ticket operasional.',
+            ];
+        }
+
+        if (
+            $delta['avg_effectiveness_score']['impact'] < 0
+            || $delta['completion_rate']['impact'] < 0
+        ) {
+            $actions[] = [
+                'priority' => 'Medium',
+                'title' => 'Review workload dan efektivitas engineer',
+                'owner' => 'Engineering Supervisor',
+                'timeframe' => '1 minggu',
+                'message' => 'Efektivitas atau completion rate melemah dibanding baseline. Evaluasi workload terbuka per engineer, kecocokan skill, dan quality of handoff dari assignment ke eksekusi.',
+            ];
+        }
+
+        if (empty($actions)) {
+            $actions[] = [
+                'priority' => 'Maintain',
+                'title' => 'Pertahankan pola operasional yang sedang berjalan',
+                'owner' => 'Operations Lead',
+                'timeframe' => 'Berjalan',
+                'message' => 'Indikator utama relatif stabil atau membaik. Fokus berikutnya adalah menjaga disiplin triage, SLA monitoring, dan inspeksi preventif agar kualitas tetap konsisten.',
+            ];
+        }
+
+        return array_slice($actions, 0, 4);
+    }
+
+    private function topRisks(array $current, ?array $comparison): array
+    {
+        $risks = [];
+        $delta = $comparison['delta'] ?? [];
+
+        if (($current['sla']['response']['compliance_rate'] ?? 0) < 90) {
+            $risks[] = [
+                'severity' => 'Critical',
+                'title' => 'Response SLA belum sehat',
+                'message' => sprintf(
+                    'Response SLA saat ini berada di %s%%. Kondisi ini meningkatkan risiko keterlambatan penanganan awal dan potensi eskalasi dari user.',
+                    number_format($current['sla']['response']['compliance_rate'] ?? 0, 2)
+                ),
+            ];
+        }
+
+        if (($current['sla']['resolution']['compliance_rate'] ?? 0) < 85) {
+            $risks[] = [
+                'severity' => 'Critical',
+                'title' => 'Resolution SLA berada di bawah target',
+                'message' => sprintf(
+                    'Resolution SLA saat ini %s%% dengan %s ticket overdue. Risiko utamanya adalah backlog berkepanjangan dan penurunan persepsi kualitas layanan.',
+                    number_format($current['sla']['resolution']['compliance_rate'] ?? 0, 2),
+                    number_format($current['summary']['overdue_resolution_tickets'] ?? 0)
+                ),
+            ];
+        }
+
+        if (($current['summary']['unassigned_tickets'] ?? 0) > 0) {
+            $risks[] = [
+                'severity' => 'High',
+                'title' => 'Masih ada ticket tanpa owner engineer',
+                'message' => sprintf(
+                    'Saat ini ada %s ticket yang belum ter-assign. Semakin lama dibiarkan, semakin besar risiko response delay dan bottleneck eksekusi.',
+                    number_format($current['summary']['unassigned_tickets'] ?? 0)
+                ),
+            ];
+        }
+
+        if (($current['inspection']['abnormal_inspections'] ?? 0) > 0) {
+            $risks[] = [
+                'severity' => 'High',
+                'title' => 'Temuan abnormal inspection menambah tekanan operasional',
+                'message' => sprintf(
+                    'Ada %s temuan abnormal pada periode aktif. Ini berpotensi menjadi sumber ticket lanjutan dan menambah beban corrective work.',
+                    number_format($current['inspection']['abnormal_inspections'] ?? 0)
+                ),
+            ];
+        }
+
+        if (($delta['ticket_volume']['direction'] ?? 'flat') === 'up' && abs((float) ($delta['ticket_volume']['percentage_change'] ?? 0)) >= 10) {
+            $risks[] = [
+                'severity' => 'Medium',
+                'title' => 'Demand naik lebih cepat daripada ritme eksekusi',
+                'message' => sprintf(
+                    'Volume ticket naik %s%% dibanding benchmark utama. Tanpa penyesuaian kapasitas, risiko SLA breach dan queue congestion akan meningkat.',
+                    number_format(abs($delta['ticket_volume']['percentage_change'] ?? 0), 1)
+                ),
+            ];
+        }
+
+        if (($delta['avg_effectiveness_score']['impact'] ?? 0) < 0) {
+            $risks[] = [
+                'severity' => 'Medium',
+                'title' => 'Efektivitas engineer melemah dibanding baseline',
+                'message' => sprintf(
+                    'Average engineer effectiveness turun menjadi %s. Ini menandakan ada tekanan kapasitas, mismatch skill, atau throughput penyelesaian yang melambat.',
+                    number_format($current['engineer']['avg_effectiveness_score'] ?? 0, 2)
+                ),
+            ];
+        }
+
+        if (empty($risks)) {
+            $risks[] = [
+                'severity' => 'Low',
+                'title' => 'Tidak ada risiko dominan yang menonjol',
+                'message' => 'Indikator utama relatif terkendali pada periode ini. Risiko operasional masih perlu dipantau, tetapi belum ada sinyal merah yang dominan dari data.',
+            ];
+        }
+
+        return array_slice($risks, 0, 5);
+    }
+
+    private function topImprovementAreas(array $current, ?array $comparison): array
+    {
+        $areas = [];
+        $delta = $comparison['delta'] ?? [];
+
+        if (($delta['response_compliance']['impact'] ?? 0) < 0 || ($current['summary']['unassigned_tickets'] ?? 0) > 0) {
+            $areas[] = [
+                'priority' => 'Immediate',
+                'title' => 'Percepat triage dan first assignment',
+                'message' => 'Ruang perbaikan terbesar saat ini ada pada kecepatan respons awal. Penguatan triage, auto-routing, atau dispatch discipline akan memberi dampak cepat ke SLA response.',
+            ];
+        }
+
+        if (($delta['resolution_compliance']['impact'] ?? 0) < 0 || ($current['summary']['overdue_resolution_tickets'] ?? 0) > 0) {
+            $areas[] = [
+                'priority' => 'High',
+                'title' => 'Kurangi backlog dan ticket overdue',
+                'message' => 'Backlog recovery dan aging control akan langsung memperbaiki resolution SLA, menurunkan queue stress, dan meningkatkan completion rate.',
+            ];
+        }
+
+        if (($delta['abnormal_inspections']['direction'] ?? 'flat') === 'up') {
+            $areas[] = [
+                'priority' => 'High',
+                'title' => 'Perkuat tindakan preventif dari hasil inspection',
+                'message' => 'Ada peluang besar menekan ticket lanjutan dengan mempercepat koreksi pada aset/lokasi yang berulang kali menghasilkan temuan abnormal.',
+            ];
+        }
+
+        if (($delta['avg_effectiveness_score']['impact'] ?? 0) < 0) {
+            $areas[] = [
+                'priority' => 'Medium',
+                'title' => 'Optimalkan distribusi workload engineer',
+                'message' => 'Penataan workload, pencocokan skill, dan quality handoff assignment berpotensi meningkatkan efektivitas engineer tanpa harus langsung menambah headcount.',
+            ];
+        }
+
+        if (($delta['ticket_volume']['direction'] ?? 'flat') === 'up') {
+            $areas[] = [
+                'priority' => 'Medium',
+                'title' => 'Sesuaikan kapasitas dengan lonjakan demand',
+                'message' => 'Kenaikan volume membuka area perbaikan pada shift planning, kapasitas tim, dan fokus taxonomy yang paling banyak menyumbang pertumbuhan ticket.',
+            ];
+        }
+
+        if (($delta['response_compliance']['impact'] ?? 0) > 0 && ($delta['resolution_compliance']['impact'] ?? 0) > 0) {
+            $areas[] = [
+                'priority' => 'Maintain',
+                'title' => 'Scale praktik yang sudah terbukti efektif',
+                'message' => 'SLA menunjukkan arah yang lebih baik. Area improvement berikutnya adalah menstandarkan praktik yang berhasil agar performa baik ini konsisten di periode berikutnya.',
+            ];
+        }
+
+        if (empty($areas)) {
+            $areas[] = [
+                'priority' => 'Maintain',
+                'title' => 'Lanjutkan disiplin operasional yang berjalan',
+                'message' => 'Belum ada area perbaikan dominan yang menonjol. Fokus terbaik adalah menjaga konsistensi SLA monitoring, inspection follow-up, dan assignment discipline.',
+            ];
+        }
+
+        return array_slice($areas, 0, 5);
+    }
+
+    private function comparisonDrivers(array $current, array $comparisonSnapshot, array $delta): array
+    {
+        $drivers = [];
+
+        $ticketVolumeDelta = $delta['ticket_volume'];
+        if ($ticketVolumeDelta['direction'] !== 'flat') {
+            $topVolumeDriver = $this->topTaxonomyDriver(
+                $current['report_structure']['taxonomy_breakdown'],
+                $comparisonSnapshot['report_structure']['taxonomy_breakdown'],
+                $ticketVolumeDelta['direction'] === 'up'
+            );
+
+            $message = sprintf(
+                'Ticket volume %s by %s (%s%%).',
+                $ticketVolumeDelta['direction'] === 'up' ? 'increased' : 'decreased',
+                abs($ticketVolumeDelta['change']),
+                number_format(abs($ticketVolumeDelta['percentage_change'] ?? 0), 1)
+            );
+
+            if ($topVolumeDriver !== null) {
+                $message .= sprintf(
+                    ' Pendorong paling kuat datang dari %s > %s > %s (%+d ticket).',
+                    $topVolumeDriver['ticket_type_name'],
+                    $topVolumeDriver['ticket_category_name'],
+                    $topVolumeDriver['ticket_sub_category_name'],
+                    $topVolumeDriver['delta']
+                );
+            }
+
+            $drivers[] = [
+                'title' => 'Perubahan Demand',
+                'tone' => $ticketVolumeDelta['direction'] === 'up' ? 'warning' : 'success',
+                'message' => str($message)
+                    ->replace('Ticket volume increased by', 'Volume ticket meningkat sebanyak')
+                    ->replace('Ticket volume decreased by', 'Volume ticket menurun sebanyak')
+                    ->replace('tickets).', ' ticket).')
+                    ->toString(),
+            ];
+        }
+
+        $responseDelta = $delta['response_compliance'];
+        $resolutionDelta = $delta['resolution_compliance'];
+        if ($responseDelta['direction'] !== 'flat' || $resolutionDelta['direction'] !== 'flat') {
+            $message = sprintf(
+                'Response SLA moved from %s%% to %s%% and resolution SLA moved from %s%% to %s%%.',
+                number_format($comparisonSnapshot['sla']['response']['compliance_rate'], 2),
+                number_format($current['sla']['response']['compliance_rate'], 2),
+                number_format($comparisonSnapshot['sla']['resolution']['compliance_rate'], 2),
+                number_format($current['sla']['resolution']['compliance_rate'], 2)
+            );
+
+            if ($delta['overdue_resolution_tickets']['direction'] !== 'flat') {
+                $message .= sprintf(
+                    ' Overdue resolution tickets %s to %s.',
+                    $delta['overdue_resolution_tickets']['direction'] === 'up' ? 'rose' : 'fell',
+                    number_format($current['summary']['overdue_resolution_tickets'])
+                );
+            }
+
+            if ($delta['unassigned_tickets']['direction'] !== 'flat') {
+                $message .= sprintf(
+                    ' Unassigned tickets %s to %s.',
+                    $delta['unassigned_tickets']['direction'] === 'up' ? 'rose' : 'fell',
+                    number_format($current['summary']['unassigned_tickets'])
+                );
+            }
+
+            $drivers[] = [
+                'title' => 'Pergerakan SLA',
+                'tone' => ($responseDelta['impact'] + $resolutionDelta['impact']) >= 0 ? 'success' : 'danger',
+                'message' => str($message)
+                    ->replace('Response SLA moved from', 'Response SLA bergerak dari')
+                    ->replace('and resolution SLA moved from', 'dan Resolution SLA bergerak dari')
+                    ->replace('Overdue resolution tickets rose to', 'Ticket overdue resolution naik menjadi')
+                    ->replace('Overdue resolution tickets fell to', 'Ticket overdue resolution turun menjadi')
+                    ->replace('Unassigned tickets rose to', 'Ticket tanpa engineer naik menjadi')
+                    ->replace('Unassigned tickets fell to', 'Ticket tanpa engineer turun menjadi')
+                    ->toString(),
+            ];
+        }
+
+        $abnormalDelta = $delta['abnormal_inspections'];
+        if ($abnormalDelta['direction'] !== 'flat') {
+            $drivers[] = [
+                'title' => 'Kualitas Inspection',
+                'tone' => $abnormalDelta['impact'] >= 0 ? 'success' : 'warning',
+                'message' => sprintf(
+                    'Temuan inspection abnormal berubah dari %s menjadi %s, yang %s tekanan ticket lanjutan.',
+                    number_format($comparisonSnapshot['inspection']['abnormal_inspections']),
+                    number_format($current['inspection']['abnormal_inspections']),
+                    $abnormalDelta['direction'] === 'up' ? 'meningkatkan' : 'menurunkan'
+                ),
+            ];
+        }
+
+        $effectivenessDelta = $delta['avg_effectiveness_score'];
+        if ($effectivenessDelta['direction'] !== 'flat') {
+            $drivers[] = [
+                'title' => 'Kapasitas Eksekusi',
+                'tone' => $effectivenessDelta['impact'] >= 0 ? 'success' : 'warning',
+                'message' => sprintf(
+                    'Rata-rata efektivitas engineer bergerak dari %s menjadi %s, sementara completion rate bergeser dari %s%% menjadi %s%%.',
+                    number_format($comparisonSnapshot['engineer']['avg_effectiveness_score'], 2),
+                    number_format($current['engineer']['avg_effectiveness_score'], 2),
+                    number_format($comparisonSnapshot['derived']['completion_rate'], 2),
+                    number_format($current['derived']['completion_rate'], 2)
+                ),
+            ];
+        }
+
+        if (empty($drivers)) {
+            $drivers[] = [
+                'title' => 'Performa Stabil',
+                'tone' => 'secondary',
+                'message' => 'Periode yang dipilih relatif stabil terhadap baseline pembanding, tanpa pergeseran material pada demand ticket, SLA, hasil inspection, maupun eksekusi engineer.',
+            ];
+        }
+
+        return $drivers;
+    }
+
+    private function topTaxonomyDriver(array $currentRows, array $comparisonRows, bool $positive = true): ?array
+    {
+        $currentMap = collect($currentRows)->keyBy(fn (array $row) => implode('|', [
+            $row['ticket_type_name'],
+            $row['ticket_category_name'],
+            $row['ticket_sub_category_name'],
+        ]));
+
+        $comparisonMap = collect($comparisonRows)->keyBy(fn (array $row) => implode('|', [
+            $row['ticket_type_name'],
+            $row['ticket_category_name'],
+            $row['ticket_sub_category_name'],
+        ]));
+
+        $keys = $currentMap->keys()->merge($comparisonMap->keys())->unique();
+
+        $driver = $keys->map(function (string $key) use ($currentMap, $comparisonMap) {
+            $currentRow = $currentMap->get($key);
+            $comparisonRow = $comparisonMap->get($key);
+
+            return [
+                'ticket_type_name' => $currentRow['ticket_type_name'] ?? $comparisonRow['ticket_type_name'] ?? 'Unclassified Type',
+                'ticket_category_name' => $currentRow['ticket_category_name'] ?? $comparisonRow['ticket_category_name'] ?? 'Unclassified Category',
+                'ticket_sub_category_name' => $currentRow['ticket_sub_category_name'] ?? $comparisonRow['ticket_sub_category_name'] ?? 'Unclassified Sub Category',
+                'delta' => (int) (($currentRow['total_tickets'] ?? 0) - ($comparisonRow['total_tickets'] ?? 0)),
+            ];
+        })->sortBy($positive ? fn (array $row) => -$row['delta'] : fn (array $row) => $row['delta'])->first();
+
+        if ($driver === null || ($positive && $driver['delta'] <= 0) || (! $positive && $driver['delta'] >= 0)) {
+            return null;
+        }
+
+        return $driver;
+    }
+
+    private function comparisonStatus(array $delta): string
+    {
+        $score = collect($delta)->sum('impact');
+
+        if ($score >= 2) {
+            return 'improved';
+        }
+
+        if ($score <= -2) {
+            return 'declined';
+        }
+
+        return 'mixed';
+    }
+
+    private function metricDelta(int|float|null $current, int|float|null $previous, bool $higherIsBetter = true): array
+    {
+        $currentValue = (float) ($current ?? 0);
+        $previousValue = (float) ($previous ?? 0);
+        $change = round($currentValue - $previousValue, 2);
+        $percentageChange = $previousValue != 0.0 ? round(($change / $previousValue) * 100, 2) : null;
+        $direction = $change > 0 ? 'up' : ($change < 0 ? 'down' : 'flat');
+
+        $impact = match ($direction) {
+            'up' => $higherIsBetter ? 1 : -1,
+            'down' => $higherIsBetter ? -1 : 1,
+            default => 0,
+        };
+
+        return [
+            'current' => $currentValue,
+            'previous' => $previousValue,
+            'change' => $change,
+            'percentage_change' => $percentageChange,
+            'direction' => $direction,
+            'impact' => $impact,
         ];
     }
 

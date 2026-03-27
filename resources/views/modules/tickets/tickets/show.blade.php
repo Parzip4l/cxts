@@ -5,6 +5,8 @@
 @php
     $workEndedAt = $ticket->completed_at ?? $ticket->resolved_at ?? $ticket->closed_at;
     $workDurationMinutes = ($ticket->started_at && $workEndedAt) ? $ticket->started_at->diffInMinutes($workEndedAt) : null;
+    $ticketAgeHours = $ticket->created_at ? $ticket->created_at->diffInHours(now()) : null;
+    $responseRiskLabel = null;
     $currentUser = auth()->user();
     $approvalActivities = $ticket->activities->filter(fn ($activity) => in_array($activity->activity_type, ['ticket_approved', 'ticket_rejected', 'ticket_ready_for_assignment'], true))->values();
     $strategyLabels = \App\Models\TicketCategory::approverStrategies();
@@ -68,6 +70,46 @@
             default => 'bg-secondary-subtle text-secondary',
         };
     };
+    $ticketStatusBadgeClass = function ($statusCode) {
+        return match (strtolower((string) $statusCode)) {
+            'new', 'open', 'assigned' => 'bg-primary-subtle text-primary',
+            'pending_approval', 'on_hold' => 'bg-warning-subtle text-warning',
+            'in_progress' => 'bg-info-subtle text-info',
+            'completed', 'closed' => 'bg-success-subtle text-success',
+            'rejected' => 'bg-danger-subtle text-danger',
+            default => 'bg-secondary-subtle text-secondary',
+        };
+    };
+    $priorityBadgeClass = function ($priorityName) {
+        return match (strtolower((string) $priorityName)) {
+            'critical' => 'bg-danger-subtle text-danger',
+            'high' => 'bg-warning-subtle text-warning',
+            'medium' => 'bg-info-subtle text-info',
+            'low' => 'bg-success-subtle text-success',
+            default => 'bg-secondary-subtle text-secondary',
+        };
+    };
+    $approvalStatusBadgeClass = function ($approvalStatus) {
+        return match ($approvalStatus) {
+            \App\Models\Ticket::APPROVAL_STATUS_PENDING => 'bg-warning-subtle text-warning',
+            \App\Models\Ticket::APPROVAL_STATUS_APPROVED => 'bg-success-subtle text-success',
+            \App\Models\Ticket::APPROVAL_STATUS_REJECTED => 'bg-danger-subtle text-danger',
+            default => 'bg-secondary-subtle text-secondary',
+        };
+    };
+    $responseRiskBadgeClass = 'bg-secondary-subtle text-secondary';
+    if ($ticket->response_due_at) {
+        if ($ticket->responded_at) {
+            $responseRiskLabel = 'Responded';
+            $responseRiskBadgeClass = 'bg-success-subtle text-success';
+        } elseif ($ticket->response_due_at->isPast()) {
+            $responseRiskLabel = 'Overdue';
+            $responseRiskBadgeClass = 'bg-danger-subtle text-danger';
+        } else {
+            $responseRiskLabel = 'On Track';
+            $responseRiskBadgeClass = 'bg-info-subtle text-info';
+        }
+    }
     $engineerCustomProperties = function ($option) {
         return [
             'department_name' => $option->department_name ?? 'No department',
@@ -99,15 +141,131 @@
                     </div>
                 @endif
 
-                <div class="d-flex justify-content-between align-items-start mb-3">
-                    <div>
-                        <h5 class="mb-1">{{ $ticket->title }}</h5>
-                        <p class="text-muted mb-0">{{ $ticket->ticket_number }}</p>
+                <div class="rounded-4 border bg-light-subtle p-4 mb-4">
+                    <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-3">
+                        <div>
+                            <div class="small text-muted text-uppercase fw-semibold mb-2">Executive Summary</div>
+                            <h4 class="mb-2">{{ $ticket->title }}</h4>
+                            <div class="d-flex flex-wrap gap-2">
+                                <span class="badge bg-dark-subtle text-dark border">{{ $ticket->ticket_number }}</span>
+                                <span class="badge {{ $ticketStatusBadgeClass($ticket->status?->code) }}">{{ $ticket->status?->name ?? '-' }}</span>
+                                <span class="badge {{ $priorityBadgeClass($ticket->priority?->name) }}">{{ $ticket->priority?->name ?? 'No Priority' }}</span>
+                                <span class="badge {{ $approvalStatusBadgeClass($ticket->approval_status) }}">{{ $ticket->approvalStatusLabel() }}</span>
+                                @if ($responseRiskLabel)
+                                    <span class="badge {{ $responseRiskBadgeClass }}">Response {{ $responseRiskLabel }}</span>
+                                @endif
+                            </div>
+                        </div>
+                        <div class="text-lg-end">
+                            <div class="small text-muted">Requester</div>
+                            <div class="fw-semibold">{{ $ticket->requester?->name ?? '-' }}</div>
+                            <div class="small text-muted">{{ $ticket->requesterDepartment?->name ?? 'No department' }}</div>
+                        </div>
                     </div>
-                    <span class="badge bg-secondary-subtle text-secondary">{{ $ticket->status?->name ?? '-' }}</span>
+
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <div class="rounded-3 border bg-white p-3 h-100">
+                                <div class="small text-muted mb-1">Current Owner</div>
+                                <div class="fw-semibold">{{ $ticket->assignedEngineer?->name ?? 'Unassigned' }}</div>
+                                <div class="small text-muted">{{ $ticket->assigned_team_name ?? 'No team assigned' }}</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="rounded-3 border bg-white p-3 h-100">
+                                <div class="small text-muted mb-1">Expected Approver</div>
+                                <div class="fw-semibold">{{ $ticket->expectedApproverDisplayName() }}</div>
+                                <div class="small text-muted">{{ $ticket->flowPolicySourceLabel() }}</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="rounded-3 border bg-white p-3 h-100">
+                                <div class="small text-muted mb-1">Ticket Age</div>
+                                <div class="fw-semibold">{{ $ticketAgeHours !== null ? number_format($ticketAgeHours) . ' hours' : '-' }}</div>
+                                <div class="small text-muted">{{ optional($ticket->created_at)->format('d M Y H:i') ?? 'Unknown created time' }}</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="rounded-3 border bg-white p-3 h-100">
+                                <div class="small text-muted mb-1">Work Duration</div>
+                                <div class="fw-semibold">{{ $workDurationMinutes !== null ? $workDurationMinutes.' min' : '-' }}</div>
+                                <div class="small text-muted">Started to completed/resolved</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
-                <p class="mb-3">{{ $ticket->description }}</p>
+                <div class="row g-3 mb-4">
+                    <div class="col-md-3">
+                        <div class="rounded-3 border bg-light-subtle p-3 h-100">
+                            <div class="text-muted small mb-1">Approval Status</div>
+                            <div class="fw-semibold">{{ $ticket->approvalStatusLabel() }}</div>
+                            <div class="small text-muted">{{ $ticket->requires_approval ? 'Approval gate active' : 'No approval gate' }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="rounded-3 border bg-light-subtle p-3 h-100">
+                            <div class="text-muted small mb-1">Assignment Gate</div>
+                            <div class="fw-semibold">{{ $ticket->canBeAssigned() ? 'Ready' : 'Blocked' }}</div>
+                            <div class="small text-muted">{{ $ticket->allow_direct_assignment ? 'Direct assignment allowed' : 'Ready flag required' }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="rounded-3 border bg-light-subtle p-3 h-100">
+                            <div class="text-muted small mb-1">Expected Approver</div>
+                            <div class="fw-semibold">{{ $ticket->expectedApproverDisplayName() }}</div>
+                            <div class="small text-muted">{{ $ticket->flowPolicySourceLabel() }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="rounded-3 border bg-light-subtle p-3 h-100">
+                            <div class="text-muted small mb-1">Work Duration</div>
+                            <div class="fw-semibold">{{ $workDurationMinutes !== null ? $workDurationMinutes.' min' : '-' }}</div>
+                            <div class="small text-muted">Started to completed/resolved</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row g-3 mb-4">
+                    <div class="col-lg-7">
+                        <div class="rounded-3 border bg-light-subtle p-3 h-100">
+                            <div class="small text-muted text-uppercase fw-semibold mb-2">Issue Brief</div>
+                            <p class="mb-3">{{ $ticket->description }}</p>
+                            <div class="d-flex flex-wrap gap-2">
+                                <span class="badge bg-white text-dark border">Service: {{ $ticket->service?->name ?? 'No related service' }}</span>
+                                <span class="badge bg-white text-dark border">Asset: {{ $ticket->asset?->name ?? 'No related asset' }}</span>
+                                <span class="badge bg-white text-dark border">Inspection: {{ $ticket->inspection?->inspection_number ?? 'No linked inspection' }}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-5">
+                        <div class="rounded-3 border p-3 h-100">
+                            <div class="small text-muted text-uppercase fw-semibold mb-3">Timeline Snapshot</div>
+                            <div class="d-flex flex-column gap-3">
+                                <div class="d-flex justify-content-between gap-3">
+                                    <div class="text-muted small">Created</div>
+                                    <div class="fw-medium text-end">{{ optional($ticket->created_at)->format('d M Y H:i') ?? '-' }}</div>
+                                </div>
+                                <div class="d-flex justify-content-between gap-3">
+                                    <div class="text-muted small">Response Due</div>
+                                    <div class="fw-medium text-end">{{ optional($ticket->response_due_at)->format('d M Y H:i') ?? '-' }}</div>
+                                </div>
+                                <div class="d-flex justify-content-between gap-3">
+                                    <div class="text-muted small">Resolution Due</div>
+                                    <div class="fw-medium text-end">{{ optional($ticket->resolution_due_at)->format('d M Y H:i') ?? '-' }}</div>
+                                </div>
+                                <div class="d-flex justify-content-between gap-3">
+                                    <div class="text-muted small">Started</div>
+                                    <div class="fw-medium text-end">{{ optional($ticket->started_at)->format('d M Y H:i') ?? '-' }}</div>
+                                </div>
+                                <div class="d-flex justify-content-between gap-3">
+                                    <div class="text-muted small">Completed</div>
+                                    <div class="fw-medium text-end">{{ optional($ticket->completed_at)->format('d M Y H:i') ?? '-' }}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
                 <div class="mb-4">
                     <div class="d-flex align-items-center justify-content-between mb-2">
@@ -148,46 +306,96 @@
                     @endif
                 </div>
 
-                <div class="row g-2 small">
-                    <div class="col-md-6"><strong>Requester:</strong> {{ $ticket->requester?->name ?? '-' }}</div>
-                    <div class="col-md-6"><strong>Department:</strong> {{ $ticket->requesterDepartment?->name ?? '-' }}</div>
-                    <div class="col-md-6"><strong>Ticket Type:</strong> {{ $ticket->category?->name ?? '-' }}</div>
-                    <div class="col-md-6"><strong>Ticket Category:</strong> {{ $ticket->subcategory?->name ?? '-' }}</div>
-                    <div class="col-md-6"><strong>Ticket Sub Category:</strong> {{ $ticket->detailSubcategory?->name ?? '-' }}</div>
-                    <div class="col-md-6"><strong>Priority:</strong> {{ $ticket->priority?->name ?? '-' }}</div>
-                    <div class="col-md-6"><strong>Related Service:</strong> {{ $ticket->service?->name ?? '-' }}</div>
-                    <div class="col-md-6"><strong>Related Asset:</strong> {{ $ticket->asset?->name ?? '-' }}</div>
-                    <div class="col-md-6"><strong>Asset Location:</strong> {{ $ticket->assetLocation?->name ?? '-' }}</div>
-                    <div class="col-md-6"><strong>Linked Inspection Task:</strong> {{ $ticket->inspection?->inspection_number ?? '-' }}</div>
-                    <div class="col-md-6"><strong>Assigned Team:</strong> {{ $ticket->assigned_team_name ?? '-' }}</div>
-                    <div class="col-md-6"><strong>Assigned Engineer:</strong> {{ $ticket->assignedEngineer?->name ?? '-' }}</div>
-                    <div class="col-md-6">
-                        <strong>Approval Rule:</strong>
-                        @if ($ticket->requires_approval)
-                            <span class="badge bg-warning-subtle text-warning">Approval Required</span>
-                        @else
-                            <span class="badge bg-success-subtle text-success">No Approval Needed</span>
-                        @endif
+                <div class="row g-3 small">
+                    <div class="col-lg-4">
+                        <div class="rounded-3 border p-3 h-100 bg-white">
+                            <div class="text-muted small text-uppercase fw-semibold mb-3">Business Context</div>
+                            <div class="d-flex flex-column gap-3">
+                                <div>
+                                    <div class="text-muted small">Requester</div>
+                                    <div class="fw-medium">{{ $ticket->requester?->name ?? '-' }}</div>
+                                </div>
+                                <div>
+                                    <div class="text-muted small">Department</div>
+                                    <div class="fw-medium">{{ $ticket->requesterDepartment?->name ?? '-' }}</div>
+                                </div>
+                                <div>
+                                    <div class="text-muted small">Service</div>
+                                    <div class="fw-medium">{{ $ticket->service?->name ?? '-' }}</div>
+                                </div>
+                                <div>
+                                    <div class="text-muted small">Asset / Location</div>
+                                    <div class="fw-medium">{{ $ticket->asset?->name ?? '-' }}</div>
+                                    <div class="text-muted">{{ $ticket->assetLocation?->name ?? 'No location' }}</div>
+                                </div>
+                                <div>
+                                    <div class="text-muted small">Linked Inspection Task</div>
+                                    <div class="fw-medium">{{ $ticket->inspection?->inspection_number ?? '-' }}</div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="col-md-6">
-                        <strong>Assignment Rule:</strong>
-                        @if ($ticket->allow_direct_assignment)
-                            <span class="badge bg-success-subtle text-success">Direct Assignment Allowed</span>
-                        @else
-                            <span class="badge bg-secondary-subtle text-secondary">Needs Ready Flag</span>
-                        @endif
+                    <div class="col-lg-4">
+                        <div class="rounded-3 border p-3 h-100 bg-white">
+                            <div class="text-muted small text-uppercase fw-semibold mb-3">Routing & Ownership</div>
+                            <div class="d-flex flex-column gap-3">
+                                <div>
+                                    <div class="text-muted small">Ticket Taxonomy</div>
+                                    <div class="fw-medium">{{ $ticket->category?->name ?? '-' }}</div>
+                                    <div class="text-muted">{{ $ticket->subcategory?->name ?? '-' }} · {{ $ticket->detailSubcategory?->name ?? '-' }}</div>
+                                </div>
+                                <div>
+                                    <div class="text-muted small">Assigned Engineer</div>
+                                    <div class="fw-medium">{{ $ticket->assignedEngineer?->name ?? '-' }}</div>
+                                    <div class="text-muted">{{ $ticket->assigned_team_name ?? 'No team assigned' }}</div>
+                                </div>
+                                <div>
+                                    <div class="text-muted small">Expected Approver</div>
+                                    <div class="fw-medium">{{ $ticket->expectedApprover?->name ?? $ticket->expected_approver_name_snapshot ?? 'Supervisor/Admin Fallback' }}</div>
+                                    <div class="text-muted">{{ str($ticket->flow_policy_source ?? 'system_default')->replace('_', ' ')->title() }}</div>
+                                </div>
+                                <div>
+                                    <div class="text-muted small">Approval Notes</div>
+                                    <div class="fw-medium">{{ $ticket->approval_notes ?: '-' }}</div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="col-md-6"><strong>Approval Status:</strong> {{ str($ticket->approval_status ?? 'not_required')->replace('_', ' ')->title() }}</div>
-                    <div class="col-md-6"><strong>Rule Source:</strong> {{ str($ticket->flow_policy_source ?? 'system_default')->replace('_', ' ')->title() }}</div>
-                    <div class="col-md-6"><strong>Expected Approver:</strong> {{ $ticket->expectedApprover?->name ?? $ticket->expected_approver_name_snapshot ?? 'Supervisor/Admin Fallback' }}</div>
-                    <div class="col-md-6"><strong>Approved By:</strong> {{ $ticket->approvedBy?->name ?? '-' }}</div>
-                    <div class="col-md-6"><strong>Ready For Assignment By:</strong> {{ $ticket->assignmentReadyBy?->name ?? '-' }}</div>
-                    <div class="col-md-6"><strong>Approval Notes:</strong> {{ $ticket->approval_notes ?: '-' }}</div>
-                    <div class="col-md-6"><strong>Response Due:</strong> {{ optional($ticket->response_due_at)->format('Y-m-d H:i') ?? '-' }}</div>
-                    <div class="col-md-6"><strong>Resolution Due:</strong> {{ optional($ticket->resolution_due_at)->format('Y-m-d H:i') ?? '-' }}</div>
-                    <div class="col-md-6"><strong>Started At:</strong> {{ optional($ticket->started_at)->format('Y-m-d H:i') ?? '-' }}</div>
-                    <div class="col-md-6"><strong>Completed At:</strong> {{ optional($ticket->completed_at)->format('Y-m-d H:i') ?? '-' }}</div>
-                    <div class="col-md-6"><strong>Work Duration:</strong> {{ $workDurationMinutes !== null ? $workDurationMinutes.' minute(s)' : '-' }}</div>
+                    <div class="col-lg-4">
+                        <div class="rounded-3 border p-3 h-100 bg-white">
+                            <div class="text-muted small text-uppercase fw-semibold mb-3">Governance Snapshot</div>
+                            <div class="d-flex flex-column gap-3">
+                                <div>
+                                    <div class="text-muted small">Approval Rule</div>
+                                    @if ($ticket->requires_approval)
+                                        <span class="badge bg-warning-subtle text-warning">Approval Required</span>
+                                    @else
+                                        <span class="badge bg-success-subtle text-success">No Approval Needed</span>
+                                    @endif
+                                </div>
+                                <div>
+                                    <div class="text-muted small">Assignment Rule</div>
+                                    @if ($ticket->allow_direct_assignment)
+                                        <span class="badge bg-success-subtle text-success">Direct Assignment Allowed</span>
+                                    @else
+                                        <span class="badge bg-secondary-subtle text-secondary">Needs Ready Flag</span>
+                                    @endif
+                                </div>
+                                <div>
+                                    <div class="text-muted small">Approved By</div>
+                                    <div class="fw-medium">{{ $ticket->approvedBy?->name ?? '-' }}</div>
+                                </div>
+                                <div>
+                                    <div class="text-muted small">Ready For Assignment By</div>
+                                    <div class="fw-medium">{{ $ticket->assignmentReadyBy?->name ?? '-' }}</div>
+                                </div>
+                                <div>
+                                    <div class="text-muted small">Last Milestone</div>
+                                    <div class="fw-medium">{{ optional($workEndedAt)->format('d M Y H:i') ?? optional($ticket->started_at)->format('d M Y H:i') ?? '-' }}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="mt-4">

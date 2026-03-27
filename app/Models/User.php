@@ -23,6 +23,8 @@ class User extends Authenticatable
     protected $fillable = [
         'name',
         'email',
+        'phone_number',
+        'profile_photo_path',
         'password',
         'role',
         'department_id',
@@ -138,5 +140,59 @@ class User extends Authenticatable
         }
 
         return false;
+    }
+
+    public function profilePhotoUrl(): ?string
+    {
+        if (! $this->profile_photo_path) {
+            return null;
+        }
+
+        return route('users.profile-photo', $this);
+    }
+
+    public function normalizedPhoneNumber(): ?string
+    {
+        if (! $this->phone_number) {
+            return null;
+        }
+
+        $normalized = preg_replace('/[^0-9+]/', '', (string) $this->phone_number);
+
+        if ($normalized === '') {
+            return null;
+        }
+
+        if (str_starts_with($normalized, '+')) {
+            return $normalized;
+        }
+
+        if (str_starts_with($normalized, '0')) {
+            return '62' . substr($normalized, 1);
+        }
+
+        return $normalized;
+    }
+
+    public function whatsappUrl(): ?string
+    {
+        $phone = $this->normalizedPhoneNumber();
+
+        if ($phone === null) {
+            return null;
+        }
+
+        return 'https://wa.me/' . ltrim($phone, '+');
+    }
+
+    public function telUrl(): ?string
+    {
+        $phone = $this->normalizedPhoneNumber();
+
+        if ($phone === null) {
+            return null;
+        }
+
+        return 'tel:' . $phone;
     }
 }

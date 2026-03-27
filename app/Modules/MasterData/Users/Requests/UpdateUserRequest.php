@@ -19,8 +19,11 @@ class UpdateUserRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', Rule::unique('users', 'email')->ignore($userId)],
+            'phone_number' => ['nullable', 'string', 'max:30'],
             'role' => ['required', 'string', Rule::exists('roles', 'code')->where('is_active', true)],
             'department_id' => ['nullable', 'integer', Rule::exists('departments', 'id')],
+            'profile_photo' => ['nullable', 'file', 'image', 'mimetypes:image/jpeg,image/png,image/webp', 'extensions:jpg,jpeg,png,webp', 'max:3072'],
+            'remove_profile_photo' => ['nullable', 'boolean'],
             'engineer_skill_ids' => ['nullable', 'array'],
             'engineer_skill_ids.*' => ['integer', Rule::exists('engineer_skills', 'id')->where('is_active', true)],
             'password' => ['nullable', 'string', 'min:8', 'confirmed'],

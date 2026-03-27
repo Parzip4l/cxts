@@ -14,6 +14,8 @@
     $canViewEngineerTasks = $user?->hasPermission('engineer_task.view_assigned') ?? false;
     $canViewOwnInspectionTasks = $user?->hasPermission('inspection_task.view_assigned') ?? false;
     $canViewOwnInspectionResults = $user?->hasPermission('inspection_result.view_assigned') ?? false;
+    $canViewEngineeringBoard = $user?->hasAnyPermission(['dashboard.view_ops', 'workforce.manage', 'engineer_task.view_assigned']) ?? false;
+    $isSuperAdmin = $user?->role === 'super_admin';
     $showConfiguration = $canManageOrganization || $canManageWorkforce || $canManageAssets || $canManageTaxonomy || $canManageSla || $canManageInspectionTemplate || $canManageAccess;
 @endphp
 
@@ -89,9 +91,7 @@
 
                     <div class="collapse" id="sidebarOpsMonitoring">
                         <ul class="nav sub-navbar-nav">
-                            <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('inspections.index') }}">Inspection Tasks</a></li>
-                            <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('inspections.create') }}">Schedule Inspection Task</a></li>
-                            <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('inspection-results.index') }}">Inspection Results</a></li>
+                            <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('dashboard.report') }}">Executive Report</a></li>
                             <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('dashboard.sla-performance') }}">SLA Performance</a></li>
                             <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('dashboard.engineer-effectiveness') }}">Engineer Effectiveness</a></li>
                         </ul>
@@ -99,6 +99,80 @@
                 </li>
                 @endif
             @endif
+            
+            @if ($canViewEngineeringBoard)
+                <li class="menu-title">Engineering</li>
+
+                <li class="nav-item">
+                    <a class="nav-link" href="{{ route('engineering.index') }}">
+                        <span class="nav-icon">
+                            <iconify-icon icon="solar:users-group-rounded-outline"></iconify-icon>
+                        </span>
+                        <span class="nav-text">Engineering Team</span>
+                    </a>
+                </li>
+
+            @endif
+
+            @if ($canViewEngineerTasks)
+                <li class="nav-item">
+                    <a class="nav-link menu-arrow" href="#sidebarEngineer" data-bs-toggle="collapse" role="button"
+                        aria-expanded="false" aria-controls="sidebarEngineer">
+                        <span class="nav-icon">
+                            <iconify-icon icon="solar:users-group-two-rounded-outline"></iconify-icon>
+                        </span>
+                        <span class="nav-text">Engineer Tasks</span>
+                    </a>
+
+                    <div class="collapse" id="sidebarEngineer">
+                        <ul class="nav sub-navbar-nav">
+                            <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('engineer-tasks.index') }}">My Tasks</a></li>
+                            <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('engineer-tasks.history') }}">Task History</a></li>
+                            <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('engineer-tasks.schedule') }}">My Schedule</a></li>
+                            <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('engineer-performance') }}">My Performance</a></li>
+                        </ul>
+                    </div>
+                </li>
+            @endif
+
+            @if ($canViewOwnInspectionTasks || $canViewOwnInspectionResults)
+                <li class="menu-title">Inspection</li>
+
+                <li class="nav-item">
+                    <a class="nav-link menu-arrow" href="#sidebarInspection" data-bs-toggle="collapse" role="button"
+                        aria-expanded="false" aria-controls="sidebarInspection">
+                        <span class="nav-icon">
+                            <iconify-icon icon="solar:clipboard-check-outline"></iconify-icon>
+                        </span>
+                        <span class="nav-text">Inspection Tasks</span>
+                    </a>
+
+                    <div class="collapse" id="sidebarInspection">
+                        <ul class="nav sub-navbar-nav">
+                            @if ($canViewOwnInspectionResults)
+                                <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('inspection-results.index') }}">Inspection Results</a></li>
+                            @endif
+                            @if ($canViewOwnInspectionTasks)
+                                <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('inspections.index') }}">My Inspection Tasks</a></li>
+                            @endif
+                            <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('inspections.create') }}">Schedule Inspection Task</a></li>
+                        </ul>
+                    </div>
+                </li>
+            @endif
+
+            @if ($isSuperAdmin)
+                <li class="menu-title">Administration</li>
+                <li class="nav-item">
+                    <a class="nav-link" href="{{ route('audit-trail.index') }}">
+                        <span class="nav-icon">
+                            <iconify-icon icon="solar:document-text-outline"></iconify-icon>
+                        </span>
+                        <span class="nav-text">Audit Trail</span>
+                    </a>
+                </li>
+            @endif
+
             @if ($showConfiguration)
                 <li class="menu-title">Configuration</li>
 
@@ -229,56 +303,7 @@
                 </li>
                 @endif
             @endif
-
             
-
-            @if ($canViewEngineerTasks)
-                <li class="menu-title">Engineering</li>
-
-                <li class="nav-item">
-                    <a class="nav-link menu-arrow" href="#sidebarEngineer" data-bs-toggle="collapse" role="button"
-                        aria-expanded="false" aria-controls="sidebarEngineer">
-                        <span class="nav-icon">
-                            <iconify-icon icon="solar:users-group-two-rounded-outline"></iconify-icon>
-                        </span>
-                        <span class="nav-text">Engineer Tasks</span>
-                    </a>
-
-                    <div class="collapse" id="sidebarEngineer">
-                        <ul class="nav sub-navbar-nav">
-                            <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('engineer-tasks.index') }}">My Tasks</a></li>
-                            <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('engineer-tasks.history') }}">Task History</a></li>
-                            <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('engineer-tasks.schedule') }}">My Schedule</a></li>
-                            <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('engineer-performance') }}">My Performance</a></li>
-                        </ul>
-                    </div>
-                </li>
-            @endif
-
-            @if ($canViewOwnInspectionTasks || $canViewOwnInspectionResults)
-                <li class="menu-title">Inspection</li>
-
-                <li class="nav-item">
-                    <a class="nav-link menu-arrow" href="#sidebarInspection" data-bs-toggle="collapse" role="button"
-                        aria-expanded="false" aria-controls="sidebarInspection">
-                        <span class="nav-icon">
-                            <iconify-icon icon="solar:clipboard-check-outline"></iconify-icon>
-                        </span>
-                        <span class="nav-text">Inspection Tasks</span>
-                    </a>
-
-                    <div class="collapse" id="sidebarInspection">
-                        <ul class="nav sub-navbar-nav">
-                            @if ($canViewOwnInspectionResults)
-                                <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('inspection-results.index') }}">Inspection Results</a></li>
-                            @endif
-                            @if ($canViewOwnInspectionTasks)
-                                <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('inspections.index') }}">My Inspection Tasks</a></li>
-                            @endif
-                        </ul>
-                    </div>
-                </li>
-            @endif
         </ul>
     </div>
 </div>

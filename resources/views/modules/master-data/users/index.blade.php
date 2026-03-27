@@ -55,6 +55,7 @@
                     <tr>
                         <th>Name</th>
                         <th>Email</th>
+                        <th>Phone</th>
                         <th>Role</th>
                         <th>Department</th>
                         <th class="text-end">Action</th>
@@ -63,8 +64,25 @@
                 <tbody>
                     @forelse ($users as $userItem)
                         <tr>
-                            <td>{{ $userItem->name }}</td>
+                            <td>
+                                <div class="d-flex align-items-center gap-2">
+                                    @if ($userItem->profilePhotoUrl())
+                                        <img
+                                            src="{{ $userItem->profilePhotoUrl() }}"
+                                            alt="{{ $userItem->name }}"
+                                            class="rounded-circle object-fit-cover border"
+                                            style="width: 36px; height: 36px;">
+                                    @else
+                                        <div class="rounded-circle bg-primary bg-opacity-10 text-primary d-flex align-items-center justify-content-center fw-bold"
+                                            style="width: 36px; height: 36px;">
+                                            {{ collect(explode(' ', trim($userItem->name ?: 'NA')))->filter()->take(2)->map(fn ($part) => strtoupper(substr($part, 0, 1)))->implode('') ?: 'NA' }}
+                                        </div>
+                                    @endif
+                                    <span>{{ $userItem->name }}</span>
+                                </div>
+                            </td>
                             <td>{{ $userItem->email }}</td>
+                            <td>{{ $userItem->phone_number ?? '-' }}</td>
                             <td>
                                 @if ($userItem->role === 'engineer')
                                     <span class="badge bg-info-subtle text-info">{{ $userItem->roleRef?->name ?? $userItem->role }}</span>
@@ -85,7 +103,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="5" class="text-center text-muted py-4">No users found.</td>
+                            <td colspan="6" class="text-center text-muted py-4">No users found.</td>
                         </tr>
                     @endforelse
                 </tbody>

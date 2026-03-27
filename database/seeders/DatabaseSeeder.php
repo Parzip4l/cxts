@@ -34,6 +34,7 @@ class DatabaseSeeder extends Seeder
             InspectionTemplateSeeder::class,
             EngineerSkillMatrixSeeder::class,
             RolePermissionSeeder::class,
+            ExecutiveReportDemoSeeder::class,
             DemoScenarioSeeder::class,
         ]);
     }

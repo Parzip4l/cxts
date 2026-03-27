@@ -12,7 +12,9 @@ use App\Modules\MasterData\Users\Requests\UpdateUserRequest;
 use App\Modules\MasterData\Users\UserService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class UserController extends Controller
 {
@@ -94,5 +96,22 @@ class UserController extends Controller
         return redirect()
             ->route('master-data.users.index')
             ->with('success', 'User has been deleted.');
+    }
+
+    public function profilePhoto(Request $request, User $user): StreamedResponse
+    {
+        abort_unless($request->user() !== null, 403);
+
+        if (
+            (int) $request->user()->id !== (int) $user->id
+            && ! $request->user()->hasAnyPermission(['dashboard.view_ops', 'workforce.manage', 'organization.manage', 'engineer_task.view_assigned'])
+        ) {
+            abort(403);
+        }
+
+        abort_unless($user->profile_photo_path, 404);
+        abort_unless(Storage::disk('local')->exists($user->profile_photo_path), 404);
+
+        return Storage::disk('local')->response($user->profile_photo_path);
     }
 }

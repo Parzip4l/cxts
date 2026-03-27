@@ -1,6 +1,6 @@
 <?php $__env->startSection('content'); ?>
 
-<?php echo $__env->make('layouts.partials.page-title', ['title' => 'Taplox', 'subtitle' => 'Dashboard'], \Illuminate\Support\Arr::except(get_defined_vars(), ['__data', '__path']))->render(); ?>
+<?php echo $__env->make('layouts.partials.page-title', ['title' => config('app.name', 'CXTS'), 'subtitle' => 'Dashboard'], \Illuminate\Support\Arr::except(get_defined_vars(), ['__data', '__path']))->render(); ?>
 <div class="row">
     <!-- Card 1 -->
     <div class="col-md-6 col-xl-3">
@@ -467,4 +467,5 @@
 <?php $__env->startSection('scripts'); ?>
 <?php echo app('Illuminate\Foundation\Vite')(['resources/js/pages/dashboard.js']); ?>
 <?php $__env->stopSection(); ?>
+
 <?php echo $__env->make('layouts.vertical', ['subtitle' => 'Dashboard'], \Illuminate\Support\Arr::except(get_defined_vars(), ['__data', '__path']))->render(); ?><?php /**PATH /Users/muhamadsobirin/Documents/cxts/resources/views/index.blade.php ENDPATH**/ ?>

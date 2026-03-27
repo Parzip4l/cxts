@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\RoutingController;
 use App\Modules\Dashboards\Operations\Web\OperationsDashboardController;
+use App\Modules\AuditTrail\Web\AuditTrailController;
+use App\Modules\Engineering\Web\EngineeringController;
 use App\Modules\MasterData\AssetCategories\Web\AssetCategoryController;
 use App\Modules\MasterData\AssetLocations\Web\AssetLocationController;
 use App\Modules\MasterData\Assets\Web\AssetController;
@@ -19,6 +21,7 @@ use App\Modules\Inspections\Inspections\Web\InspectionController;
 use App\Modules\Inspections\Results\Web\InspectionResultController;
 use App\Modules\Inspections\PublicAccess\Web\PublicInspectionController;
 use App\Modules\Inspections\InspectionTemplates\Web\InspectionTemplateController;
+use App\Modules\Notifications\Web\NotificationController;
 use App\Modules\Profile\Web\ProfileController;
 use App\Modules\Tickets\PublicAccess\Web\PublicTicketController;
 use App\Modules\Tickets\EngineerTasks\Web\EngineerTaskController;
@@ -36,10 +39,10 @@ require __DIR__ . '/auth.php';
 
 Route::prefix('public')->name('public.')->group(function (): void {
     Route::get('tickets/create', [PublicTicketController::class, 'create'])->name('tickets.create');
-    Route::post('tickets', [PublicTicketController::class, 'store'])->name('tickets.store');
+    Route::post('tickets', [PublicTicketController::class, 'store'])->middleware('audit')->name('tickets.store');
 
     Route::get('inspections/create', [PublicInspectionController::class, 'create'])->name('inspections.create');
-    Route::post('inspections', [PublicInspectionController::class, 'store'])->name('inspections.store');
+    Route::post('inspections', [PublicInspectionController::class, 'store'])->middleware('audit')->name('inspections.store');
 });
 
 Route::group(['prefix' => '/', 'middleware' => 'auth'], function (): void {
@@ -48,13 +51,18 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function (): void {
     Route::get('engineer-performance', [OperationsDashboardController::class, 'myPerformance'])
         ->name('engineer-performance')
         ->middleware('permission:dashboard.view_own_performance');
+    Route::get('engineering', [EngineeringController::class, 'index'])->name('engineering.index');
+    Route::get('users/{user}/profile-photo', [MasterUserController::class, 'profilePhoto'])->name('users.profile-photo');
+    Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.center');
+    Route::get('audit-trail', [AuditTrailController::class, 'index'])->name('audit-trail.index')->middleware('role:super_admin');
 
     Route::prefix('dashboard')->name('dashboard.')->middleware('permission:dashboard.view_ops')->group(function (): void {
+        Route::get('report', [OperationsDashboardController::class, 'report'])->name('report');
         Route::get('sla-performance', [OperationsDashboardController::class, 'slaPerformance'])->name('sla-performance');
         Route::get('engineer-effectiveness', [OperationsDashboardController::class, 'engineerEffectiveness'])->name('engineer-effectiveness');
     });
 
-    Route::prefix('master-data')->name('master-data.')->group(function (): void {
+    Route::prefix('master-data')->name('master-data.')->middleware('audit')->group(function (): void {
         Route::middleware('permission:organization.manage')->group(function (): void {
             Route::resource('users', MasterUserController::class)->except('show');
             Route::resource('departments', DepartmentController::class)->except('show');
@@ -100,7 +108,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function (): void {
         });
     });
 
-    Route::prefix('tickets')->name('tickets.')->group(function (): void {
+    Route::prefix('tickets')->name('tickets.')->middleware('audit')->group(function (): void {
         Route::get('', [TicketController::class, 'index'])->name('index');
         Route::get('create', [TicketController::class, 'create'])->name('create');
         Route::post('', [TicketController::class, 'store'])->name('store');
@@ -112,7 +120,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function (): void {
         Route::get('{ticket}/attachments/{attachment}', [TicketController::class, 'showAttachment'])->name('attachments.show');
     });
 
-    Route::prefix('engineer-tasks')->name('engineer-tasks.')->middleware('permission:engineer_task.view_assigned')->group(function (): void {
+    Route::prefix('engineer-tasks')->name('engineer-tasks.')->middleware(['permission:engineer_task.view_assigned', 'audit'])->group(function (): void {
         Route::get('', [EngineerTaskController::class, 'index'])->name('index');
         Route::get('history', [EngineerTaskController::class, 'history'])->name('history');
         Route::get('schedule', [EngineerTaskController::class, 'schedule'])->name('schedule');
@@ -124,7 +132,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function (): void {
         Route::post('{ticket}/worklogs', [EngineerTaskController::class, 'storeWorklog'])->name('worklogs.store');
     });
 
-    Route::prefix('inspections')->name('inspections.')->middleware('role:super_admin,operational_admin,supervisor,inspection_officer,engineer')->group(function (): void {
+    Route::prefix('inspections')->name('inspections.')->middleware(['role:super_admin,operational_admin,supervisor,inspection_officer,engineer', 'audit'])->group(function (): void {
         Route::get('', [InspectionController::class, 'index'])->name('index');
         Route::get('create', [InspectionController::class, 'create'])->name('create');
         Route::post('', [InspectionController::class, 'store'])->name('store');
@@ -134,12 +142,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function (): void {
         Route::post('{inspection}/evidences', [InspectionController::class, 'storeEvidence'])->name('evidences.store');
     });
 
-    Route::prefix('inspection-results')->name('inspection-results.')->middleware('role:super_admin,operational_admin,supervisor,inspection_officer')->group(function (): void {
+    Route::prefix('inspection-results')->name('inspection-results.')->middleware(['role:super_admin,operational_admin,supervisor,inspection_officer', 'audit'])->group(function (): void {
         Route::get('', [InspectionResultController::class, 'index'])->name('index');
         Route::get('{inspection}', [InspectionResultController::class, 'show'])->name('show');
     });
 
-    Route::prefix('profile')->name('profile.')->group(function (): void {
+    Route::prefix('profile')->name('profile.')->middleware('audit')->group(function (): void {
         Route::get('', [ProfileController::class, 'edit'])->name('edit');
         Route::put('', [ProfileController::class, 'update'])->name('update');
     });

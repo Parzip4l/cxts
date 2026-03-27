@@ -1,7 +1,7 @@
 
 
 <?php $__env->startSection('content'); ?>
-<?php echo $__env->make('layouts.partials.page-title', ['title' => 'Taplox', 'subtitle' => 'Chart'], \Illuminate\Support\Arr::except(get_defined_vars(), ['__data', '__path']))->render(); ?>
+<?php echo $__env->make('layouts.partials.page-title', ['title' => config('app.name', 'CXTS'), 'subtitle' => 'Chart'], \Illuminate\Support\Arr::except(get_defined_vars(), ['__data', '__path']))->render(); ?>
 
 <div class="row">
     <div class="col-xl-6">
@@ -325,4 +325,5 @@
 <script src="https://apexcharts.com/samples/assets/ohlc.js"></script>
 <?php echo app('Illuminate\Foundation\Vite')(['resources/js/pages/chart.js']); ?>
 <?php $__env->stopSection(); ?>
+
 <?php echo $__env->make('layouts.vertical', ['subtitle' => 'Charts'], \Illuminate\Support\Arr::except(get_defined_vars(), ['__data', '__path']))->render(); ?><?php /**PATH /Users/muhamadsobirin/Documents/cxts/resources/views/pages/charts.blade.php ENDPATH**/ ?>

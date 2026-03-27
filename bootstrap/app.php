@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use App\Http\Middleware\AuthenticateApiToken;
 use App\Http\Middleware\EnsureUserHasPermission;
 use App\Http\Middleware\EnsureUserHasRole;
+use App\Http\Middleware\RecordAuditTrail;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -30,6 +31,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'api.token' => AuthenticateApiToken::class,
             'role' => EnsureUserHasRole::class,
             'permission' => EnsureUserHasPermission::class,
+            'audit' => RecordAuditTrail::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

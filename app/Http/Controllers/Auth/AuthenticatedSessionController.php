@@ -5,11 +5,16 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Providers\RouteServiceProvider;
+use App\Services\Audit\AuditTrailService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
 class AuthenticatedSessionController extends Controller
 {
+    public function __construct(private readonly AuditTrailService $auditTrailService)
+    {
+    }
+
     /**
      * Display the login view.
      *
@@ -33,6 +38,14 @@ class AuthenticatedSessionController extends Controller
 
         $request->session()->regenerate();
 
+        $this->auditTrailService->recordManual(
+            actor: $request->user(),
+            module: 'Authentication',
+            action: 'login / store',
+            path: '/login',
+            request: $request,
+        );
+
         return redirect()->to($this->resolveRedirectTarget($request));
     }
 
@@ -44,6 +57,16 @@ class AuthenticatedSessionController extends Controller
      */
     public function destroy(Request $request)
     {
+        $actor = $request->user();
+
+        $this->auditTrailService->recordManual(
+            actor: $actor,
+            module: 'Authentication',
+            action: 'logout / destroy',
+            path: '/logout',
+            request: $request,
+        );
+
         Auth::guard('web')->logout();
 
         $request->session()->invalidate();

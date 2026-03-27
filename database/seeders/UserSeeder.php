@@ -16,21 +16,21 @@ class UserSeeder extends Seeder
         $departments = Department::query()->pluck('id', 'code');
 
         $users = [
-            ['name' => 'Super Admin', 'email' => 'superadmin@demo.com', 'role' => 'super_admin', 'department_code' => 'IT-ENG'],
-            ['name' => 'Nadia Permata', 'email' => 'opsadmin@demo.com', 'role' => 'operational_admin', 'department_code' => 'OPS-HD'],
-            ['name' => 'Arif Setiawan', 'email' => 'supervisor@demo.com', 'role' => 'supervisor', 'department_code' => 'IT-ENG'],
-            ['name' => 'Andi Pranata', 'email' => 'engineer1@demo.com', 'role' => 'engineer', 'department_code' => 'IT-FOPS'],
-            ['name' => 'Citra Lestari', 'email' => 'engineer2@demo.com', 'role' => 'engineer', 'department_code' => 'IT-FOPS'],
-            ['name' => 'Kiki Rahmawati', 'email' => 'kiki.rahmawati@demo.com', 'role' => 'engineer', 'department_code' => 'IT-NOC'],
-            ['name' => 'Eko Saputra', 'email' => 'eko.saputra@demo.com', 'role' => 'engineer', 'department_code' => 'IT-INF'],
-            ['name' => 'Gilang Prasetyo', 'email' => 'gilang.prasetyo@demo.com', 'role' => 'engineer', 'department_code' => 'IT-SEC'],
-            ['name' => 'Irfan Setiawan', 'email' => 'irfan.setiawan@demo.com', 'role' => 'engineer', 'department_code' => 'IT-NOC'],
-            ['name' => 'Ade Puspa Agustina S.Gz', 'email' => 'ade.puspa@demo.com', 'role' => 'supervisor', 'department_code' => 'OPS-HD'],
-            ['name' => 'Rizal Kurniawan', 'email' => 'inspector@demo.com', 'role' => 'inspection_officer', 'department_code' => 'IT-FOPS'],
-            ['name' => 'Bagas Nugraha', 'email' => 'requester@demo.com', 'role' => 'requester', 'department_code' => 'OPS-TERM'],
-            ['name' => 'Sarah Maharani', 'email' => 'sarah.maharani@demo.com', 'role' => 'requester', 'department_code' => 'CORP-GA'],
-            ['name' => 'Dini Febrianti', 'email' => 'dini.febrianti@demo.com', 'role' => 'requester', 'department_code' => 'FIN-PROC'],
-            ['name' => 'CXTS Demo Owner', 'email' => 'user@demo.com', 'role' => 'super_admin', 'department_code' => 'IT-ENG'],
+            ['name' => 'Super Admin', 'email' => 'superadmin@demo.com', 'role' => 'super_admin', 'department_code' => 'IT-ENG', 'phone_number' => '081200000001'],
+            ['name' => 'Nadia Permata', 'email' => 'opsadmin@demo.com', 'role' => 'operational_admin', 'department_code' => 'OPS-HD', 'phone_number' => '081200000002'],
+            ['name' => 'Arif Setiawan', 'email' => 'supervisor@demo.com', 'role' => 'supervisor', 'department_code' => 'IT-ENG', 'phone_number' => '081200000003'],
+            ['name' => 'Andi Pranata', 'email' => 'engineer1@demo.com', 'role' => 'engineer', 'department_code' => 'IT-FOPS', 'phone_number' => '081200000004'],
+            ['name' => 'Citra Lestari', 'email' => 'engineer2@demo.com', 'role' => 'engineer', 'department_code' => 'IT-FOPS', 'phone_number' => '081200000005'],
+            ['name' => 'Kiki Rahmawati', 'email' => 'kiki.rahmawati@demo.com', 'role' => 'engineer', 'department_code' => 'IT-NOC', 'phone_number' => '081200000006'],
+            ['name' => 'Eko Saputra', 'email' => 'eko.saputra@demo.com', 'role' => 'engineer', 'department_code' => 'IT-INF', 'phone_number' => '081200000007'],
+            ['name' => 'Gilang Prasetyo', 'email' => 'gilang.prasetyo@demo.com', 'role' => 'engineer', 'department_code' => 'IT-SEC', 'phone_number' => '081200000008'],
+            ['name' => 'Irfan Setiawan', 'email' => 'irfan.setiawan@demo.com', 'role' => 'engineer', 'department_code' => 'IT-NOC', 'phone_number' => '081200000009'],
+            ['name' => 'Ade Puspa Agustina S.Gz', 'email' => 'ade.puspa@demo.com', 'role' => 'supervisor', 'department_code' => 'OPS-HD', 'phone_number' => '081200000010'],
+            ['name' => 'Rizal Kurniawan', 'email' => 'inspector@demo.com', 'role' => 'inspection_officer', 'department_code' => 'IT-FOPS', 'phone_number' => '081200000011'],
+            ['name' => 'Bagas Nugraha', 'email' => 'requester@demo.com', 'role' => 'requester', 'department_code' => 'OPS-TERM', 'phone_number' => '081200000012'],
+            ['name' => 'Sarah Maharani', 'email' => 'sarah.maharani@demo.com', 'role' => 'requester', 'department_code' => 'CORP-GA', 'phone_number' => '081200000013'],
+            ['name' => 'Dini Febrianti', 'email' => 'dini.febrianti@demo.com', 'role' => 'requester', 'department_code' => 'FIN-PROC', 'phone_number' => '081200000014'],
+            ['name' => 'CXTS Demo Owner', 'email' => 'user@demo.com', 'role' => 'super_admin', 'department_code' => 'IT-ENG', 'phone_number' => '081200000015'],
         ];
 
         foreach ($users as $user) {
@@ -38,6 +38,7 @@ class UserSeeder extends Seeder
                 ['email' => $user['email']],
                 [
                     'name' => $user['name'],
+                    'phone_number' => $user['phone_number'] ?? null,
                     'email_verified_at' => now(),
                     'password' => Hash::make('password'),
                     'role' => $user['role'],

@@ -5,9 +5,10 @@
                 <p class="mb-0">
                     <script>
                         document.write(new Date().getFullYear())
-                    </script> &copy; Taplox.</a>
+                    </script> &copy; <?php echo e(config('app.name', 'CXTS')); ?>.
                 </p>
             </div>
         </div>
     </div>
-</footer><?php /**PATH /Users/muhamadsobirin/Documents/cxts/resources/views/layouts/partials/footer.blade.php ENDPATH**/ ?>
+</footer>
+<?php /**PATH /Users/muhamadsobirin/Documents/cxts/resources/views/layouts/partials/footer.blade.php ENDPATH**/ ?>

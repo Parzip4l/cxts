@@ -55,6 +55,7 @@
                     <tr>
                         <th>Name</th>
                         <th>Email</th>
+                        <th>Phone</th>
                         <th>Role</th>
                         <th>Department</th>
                         <th class="text-end">Action</th>
@@ -63,8 +64,26 @@
                 <tbody>
                     <?php $__empty_1 = true; $__currentLoopData = $users; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $userItem): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
                         <tr>
-                            <td><?php echo e($userItem->name); ?></td>
+                            <td>
+                                <div class="d-flex align-items-center gap-2">
+                                    <?php if($userItem->profilePhotoUrl()): ?>
+                                        <img
+                                            src="<?php echo e($userItem->profilePhotoUrl()); ?>"
+                                            alt="<?php echo e($userItem->name); ?>"
+                                            class="rounded-circle object-fit-cover border"
+                                            style="width: 36px; height: 36px;">
+                                    <?php else: ?>
+                                        <div class="rounded-circle bg-primary bg-opacity-10 text-primary d-flex align-items-center justify-content-center fw-bold"
+                                            style="width: 36px; height: 36px;">
+                                            <?php echo e(collect(explode(' ', trim($userItem->name ?: 'NA')))->filter()->take(2)->map(fn ($part) => strtoupper(substr($part, 0, 1)))->implode('') ?: 'NA'); ?>
+
+                                        </div>
+                                    <?php endif; ?>
+                                    <span><?php echo e($userItem->name); ?></span>
+                                </div>
+                            </td>
                             <td><?php echo e($userItem->email); ?></td>
+                            <td><?php echo e($userItem->phone_number ?? '-'); ?></td>
                             <td>
                                 <?php if($userItem->role === 'engineer'): ?>
                                     <span class="badge bg-info-subtle text-info"><?php echo e($userItem->roleRef?->name ?? $userItem->role); ?></span>
@@ -85,7 +104,7 @@
                         </tr>
                     <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?>
                         <tr>
-                            <td colspan="5" class="text-center text-muted py-4">No users found.</td>
+                            <td colspan="6" class="text-center text-muted py-4">No users found.</td>
                         </tr>
                     <?php endif; ?>
                 </tbody>

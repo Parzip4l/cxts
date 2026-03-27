@@ -10,11 +10,33 @@
 
 <div class="card">
     <div class="card-body">
-        <form method="POST" action="<?php echo e($action); ?>" class="row g-3">
+        <form method="POST" action="<?php echo e($action); ?>" class="row g-3" enctype="multipart/form-data">
             <?php echo csrf_field(); ?>
             <?php if($method !== 'POST'): ?>
                 <?php echo method_field($method); ?>
             <?php endif; ?>
+
+            <div class="col-12">
+                <div class="d-flex align-items-center gap-3 flex-wrap">
+                    <?php if($userRecord->profilePhotoUrl()): ?>
+                        <img
+                            src="<?php echo e($userRecord->profilePhotoUrl()); ?>"
+                            alt="<?php echo e($userRecord->name); ?>"
+                            class="rounded-circle border object-fit-cover"
+                            style="width: 72px; height: 72px;">
+                    <?php else: ?>
+                        <div class="rounded-circle bg-primary bg-opacity-10 text-primary d-flex align-items-center justify-content-center fw-bold fs-4"
+                            style="width: 72px; height: 72px;">
+                            <?php echo e(collect(explode(' ', trim($userRecord->name ?: 'NA')))->filter()->take(2)->map(fn ($part) => strtoupper(substr($part, 0, 1)))->implode('') ?: 'NA'); ?>
+
+                        </div>
+                    <?php endif; ?>
+                    <div>
+                        <h6 class="mb-1">Profile Photo</h6>
+                        <div class="text-muted small">Upload JPG, PNG, or WEBP up to 3 MB.</div>
+                    </div>
+                </div>
+            </div>
 
             <div class="col-md-6">
                 <label for="name" class="form-label">Name</label>
@@ -60,6 +82,59 @@ $message = $__bag->first($__errorArgs[0]); ?>
 if (isset($__messageOriginal)) { $message = $__messageOriginal; }
 endif;
 unset($__errorArgs, $__bag); ?>
+            </div>
+
+            <div class="col-md-6">
+                <label for="phone_number" class="form-label">Phone Number</label>
+                <input type="text" id="phone_number" name="phone_number" class="form-control <?php $__errorArgs = ['phone_number'];
+$__bag = $errors->getBag($__errorArgs[1] ?? 'default');
+if ($__bag->has($__errorArgs[0])) :
+if (isset($message)) { $__messageOriginal = $message; }
+$message = $__bag->first($__errorArgs[0]); ?> is-invalid <?php unset($message);
+if (isset($__messageOriginal)) { $message = $__messageOriginal; }
+endif;
+unset($__errorArgs, $__bag); ?>"
+                    value="<?php echo e(old('phone_number', $userRecord->phone_number)); ?>" placeholder="e.g. 081234567890">
+                <?php $__errorArgs = ['phone_number'];
+$__bag = $errors->getBag($__errorArgs[1] ?? 'default');
+if ($__bag->has($__errorArgs[0])) :
+if (isset($message)) { $__messageOriginal = $message; }
+$message = $__bag->first($__errorArgs[0]); ?>
+                    <div class="invalid-feedback"><?php echo e($message); ?></div>
+                <?php unset($message);
+if (isset($__messageOriginal)) { $message = $__messageOriginal; }
+endif;
+unset($__errorArgs, $__bag); ?>
+            </div>
+
+            <div class="col-md-6">
+                <label for="profile_photo" class="form-label">Custom Profile Photo</label>
+                <input type="file" id="profile_photo" name="profile_photo"
+                    class="form-control <?php $__errorArgs = ['profile_photo'];
+$__bag = $errors->getBag($__errorArgs[1] ?? 'default');
+if ($__bag->has($__errorArgs[0])) :
+if (isset($message)) { $__messageOriginal = $message; }
+$message = $__bag->first($__errorArgs[0]); ?> is-invalid <?php unset($message);
+if (isset($__messageOriginal)) { $message = $__messageOriginal; }
+endif;
+unset($__errorArgs, $__bag); ?>"
+                    accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp">
+                <?php $__errorArgs = ['profile_photo'];
+$__bag = $errors->getBag($__errorArgs[1] ?? 'default');
+if ($__bag->has($__errorArgs[0])) :
+if (isset($message)) { $__messageOriginal = $message; }
+$message = $__bag->first($__errorArgs[0]); ?>
+                    <div class="invalid-feedback"><?php echo e($message); ?></div>
+                <?php unset($message);
+if (isset($__messageOriginal)) { $message = $__messageOriginal; }
+endif;
+unset($__errorArgs, $__bag); ?>
+                <?php if($userRecord->profile_photo_path): ?>
+                    <div class="form-check mt-2">
+                        <input class="form-check-input" type="checkbox" value="1" id="remove_profile_photo" name="remove_profile_photo">
+                        <label class="form-check-label" for="remove_profile_photo">Remove current profile photo</label>
+                    </div>
+                <?php endif; ?>
             </div>
 
             <div class="col-md-6">
