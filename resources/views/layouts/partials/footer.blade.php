@@ -5,7 +5,7 @@
                 <p class="mb-0">
                     <script>
                         document.write(new Date().getFullYear())
-                    </script> &copy; Taplox.</a>
+                    </script> &copy; {{ config('app.name', 'CXTS') }}.
                 </p>
             </div>
         </div>

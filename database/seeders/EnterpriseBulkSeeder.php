@@ -268,7 +268,7 @@ class EnterpriseBulkSeeder extends Seeder
             ['name' => 'Engineer Two', 'email' => 'engineer2@demo.com', 'role' => 'engineer', 'department_code' => 'OPS-FIELD'],
             ['name' => 'Inspector', 'email' => 'inspector@demo.com', 'role' => 'inspection_officer', 'department_code' => 'OPS-INS'],
             ['name' => 'Requester User', 'email' => 'requester@demo.com', 'role' => 'requester', 'department_code' => 'OPS-HD'],
-            ['name' => 'Taplox Admin', 'email' => 'user@demo.com', 'role' => 'super_admin', 'department_code' => 'IT-ENG'],
+            ['name' => 'CXTS Demo Admin', 'email' => 'user@demo.com', 'role' => 'super_admin', 'department_code' => 'IT-ENG'],
         ];
 
         foreach ($fixedUsers as $user) {

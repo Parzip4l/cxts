@@ -30,7 +30,7 @@ class UserSeeder extends Seeder
             ['name' => 'Bagas Nugraha', 'email' => 'requester@demo.com', 'role' => 'requester', 'department_code' => 'OPS-TERM'],
             ['name' => 'Sarah Maharani', 'email' => 'sarah.maharani@demo.com', 'role' => 'requester', 'department_code' => 'CORP-GA'],
             ['name' => 'Dini Febrianti', 'email' => 'dini.febrianti@demo.com', 'role' => 'requester', 'department_code' => 'FIN-PROC'],
-            ['name' => 'Taplox Demo Owner', 'email' => 'user@demo.com', 'role' => 'super_admin', 'department_code' => 'IT-ENG'],
+            ['name' => 'CXTS Demo Owner', 'email' => 'user@demo.com', 'role' => 'super_admin', 'department_code' => 'IT-ENG'],
         ];
 
         foreach ($users as $user) {

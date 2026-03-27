@@ -21,8 +21,8 @@ class="authentication-bg"
                                     <img src="/images/logo-light.png" height="28" alt="logo light">
                                 </a>
                             </div>
-                            <h4 class="fw-bold text-dark mb-2">Welcome Back!</h3>
-                                <p class="text-muted">Sign in to your account to continue</p>
+                            <h4 class="fw-bold text-dark mb-2">Masuk ke {{ config('app.name', 'CXTS') }}</h4>
+                            <p class="text-muted mb-0">Platform operasional untuk ticketing, SLA, approval, asset, dan inspection.</p>
                         </div>
 
                         @if ($errors->any())
@@ -42,7 +42,7 @@ class="authentication-bg"
 
                             <div class="mb-3">
                                 <label for="email" class="form-label">Email Address</label>
-                                <input type="email" class="form-control @error('email') is-invalid @enderror" id="email" name="email" value="{{ old('email', 'user@demo.com') }}"
+                                <input type="email" class="form-control @error('email') is-invalid @enderror" id="email" name="email" value="{{ old('email', 'superadmin@demo.com') }}"
                                     placeholder="Enter your email">
                                 @error('email')
                                     <div class="invalid-feedback">{{ $message }}</div>
@@ -79,10 +79,7 @@ class="authentication-bg"
                         </div>
                     </div>
                 </div>
-                <p class="text-center mt-4 text-white text-opacity-50">Don't have an account?
-                    <a href="{{ route('second', ['auth', 'signup']) }}"
-                        class="text-decoration-none text-white fw-bold">Sign Up</a>
-                </p>
+                <p class="text-center mt-4 text-white text-opacity-50">Environment demo internal GM Tekno.</p>
             </div>
         </div>
     </div>

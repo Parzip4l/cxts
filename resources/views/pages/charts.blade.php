@@ -1,7 +1,7 @@
 @extends('layouts.vertical', ['subtitle' => 'Charts'])
 
 @section('content')
-@include('layouts.partials.page-title', ['title' => 'Taplox', 'subtitle' => 'Chart'])
+@include('layouts.partials.page-title', ['title' => config('app.name', 'CXTS'), 'subtitle' => 'Chart'])
 
 <div class="row">
     <div class="col-xl-6">

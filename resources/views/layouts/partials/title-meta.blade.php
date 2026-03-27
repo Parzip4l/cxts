@@ -1,12 +1,26 @@
 <meta charset="utf-8" />
-<title>{{ $subtitle}} | Taplox - Responsive Admin Dashboard Template</title>
+@php
+    $appName = config('app.name', 'CXTS');
+    $pageTitle = trim(($subtitle ?? 'Dashboard') . ' | ' . $appName);
+    $metaDescription = $metaDescription ?? 'CXTS adalah platform service operations dan IT service management untuk ticketing, SLA, approval workflow, asset context, inspection follow-up, dan operational reporting.';
+    $metaKeywords = $metaKeywords ?? 'CXTS, ITSM, service desk, ticketing system, SLA, approval workflow, asset management, inspection operations, GM Tekno';
+@endphp
+<title>{{ $pageTitle }}</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Taplox: An advanced, fully responsive admin dashboard template packed with features to streamline your analytics and management needs." />
-<meta name="author" content="StackBros" />
-<meta name="keywords" content="Taplox, admin dashboard, responsive template, analytics, modern UI, management tools" />
+<meta name="description" content="{{ $metaDescription }}" />
+<meta name="author" content="GM Tekno" />
+<meta name="keywords" content="{{ $metaKeywords }}" />
 <meta http-equiv="X-UA-Compatible" content="IE=edge" />
 <meta name="robots" content="index, follow" />
 <meta name="theme-color" content="#ffffff">
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="{{ $appName }}" />
+<meta property="og:title" content="{{ $pageTitle }}" />
+<meta property="og:description" content="{{ $metaDescription }}" />
+<meta property="og:url" content="{{ url()->current() }}" />
+<meta name="twitter:card" content="summary" />
+<meta name="twitter:title" content="{{ $pageTitle }}" />
+<meta name="twitter:description" content="{{ $metaDescription }}" />
 
 <!-- App favicon -->
 <link rel="shortcut icon" href="/images/favicon.ico">

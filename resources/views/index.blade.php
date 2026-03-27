@@ -2,7 +2,7 @@
 
 @section('content')
 
-@include('layouts.partials.page-title', ['title' => 'Taplox', 'subtitle' => 'Dashboard'])
+@include('layouts.partials.page-title', ['title' => config('app.name', 'CXTS'), 'subtitle' => 'Dashboard'])
 <div class="row">
     <!-- Card 1 -->
     <div class="col-md-6 col-xl-3">
