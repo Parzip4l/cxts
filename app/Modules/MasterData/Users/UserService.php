@@ -1,0 +1,93 @@
+<?php
+
+namespace App\Modules\MasterData\Users;
+
+use App\Models\User;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Hash;
+
+class UserService
+{
+    public function paginate(array $filters = [], int $perPage = 15): LengthAwarePaginator
+    {
+        return User::query()
+            ->with(['department:id,name', 'roleRef:id,code,name'])
+            ->when($filters['search'] ?? null, function ($query, $search) {
+                $query->where(function ($subQuery) use ($search) {
+                    $subQuery->where('name', 'like', "%{$search}%")
+                        ->orWhere('email', 'like', "%{$search}%");
+                });
+            })
+            ->when($filters['role'] ?? null, fn ($query, $role) => $query->where('role', $role))
+            ->when($filters['department_id'] ?? null, fn ($query, $departmentId) => $query->where('department_id', $departmentId))
+            ->orderBy('name')
+            ->paginate($perPage)
+            ->withQueryString();
+    }
+
+    public function create(array $data): User
+    {
+        $skillIds = $this->extractSkillIds($data);
+        $user = User::query()->create($this->preparePayload($data));
+        $this->syncEngineerSkills($user, $data['role'] ?? null, $skillIds);
+
+        return $user->fresh(['department:id,name', 'roleRef:id,code,name', 'engineerSkills:id,name']);
+    }
+
+    public function update(User $user, array $data): User
+    {
+        $skillIds = $this->extractSkillIds($data);
+        $user->update($this->preparePayload($data));
+        $this->syncEngineerSkills($user, $data['role'] ?? $user->role, $skillIds);
+
+        return $user->fresh(['department:id,name', 'roleRef:id,code,name', 'engineerSkills:id,name']);
+    }
+
+    public function updateProfile(User $user, array $data): User
+    {
+        $user->update($this->preparePayload($data));
+
+        return $user->fresh(['department:id,name', 'roleRef:id,code,name']);
+    }
+
+    public function delete(User $user): void
+    {
+        $user->delete();
+    }
+
+    private function preparePayload(array $data): array
+    {
+        if (($data['password'] ?? null) !== null && $data['password'] !== '') {
+            $data['password'] = Hash::make((string) $data['password']);
+        } else {
+            unset($data['password']);
+        }
+
+        unset($data['current_password']);
+        unset($data['password_confirmation']);
+        unset($data['engineer_skill_ids']);
+
+        return $data;
+    }
+
+    private function extractSkillIds(array $data): array
+    {
+        return collect($data['engineer_skill_ids'] ?? [])
+            ->filter(fn ($value) => $value !== null && $value !== '')
+            ->map(fn ($value) => (int) $value)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function syncEngineerSkills(User $user, ?string $role, array $skillIds): void
+    {
+        if ($role !== 'engineer') {
+            $user->engineerSkills()->sync([]);
+
+            return;
+        }
+
+        $user->engineerSkills()->sync($skillIds);
+    }
+}

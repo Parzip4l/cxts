@@ -1,0 +1,102 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: satset_app
+    working_dir: /var/www/html
+    volumes:
+      - ./:/var/www/html
+      - cxts_vendor:/var/www/html/vendor
+    env_file:
+      - .env.docker
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    ports:
+      - "8081:8000"
+    command: php artisan serve --host=0.0.0.0 --port=8000
+
+  queue:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: satset_queue
+    working_dir: /var/www/html
+    volumes:
+      - ./:/var/www/html
+      - cxts_vendor:/var/www/html/vendor
+    env_file:
+      - .env.docker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    command: php artisan queue:listen --tries=1 --timeout=120
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: satset_scheduler
+    working_dir: /var/www/html
+    volumes:
+      - ./:/var/www/html
+      - cxts_vendor:/var/www/html/vendor
+    env_file:
+      - .env.docker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    command: >
+      sh -lc "while true; do
+        php artisan schedule:run --no-interaction;
+        sleep 60;
+      done"
+
+  assets:
+    image: node:20-bookworm-slim
+    container_name: satset_assets
+    working_dir: /var/www/html
+    volumes:
+      - ./:/var/www/html
+      - cxts_node_modules:/var/www/html/node_modules
+    command: >
+      sh -lc "npm install &&
+        npx vite build --watch"
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: satset_postgres
+    environment:
+      POSTGRES_DB: cxts_demo
+      POSTGRES_USER: cxts
+      POSTGRES_PASSWORD: cxts
+    volumes:
+      - satset_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cxts -d cxts_demo"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:alpine
+    container_name: satset_redis
+    command: redis-server --appendonly yes
+    volumes:
+      - satset_redis_data:/data
+
+volumes:
+  satset_postgres_data:
+  satset_redis_data:
+  cxts_vendor:
+  cxts_node_modules:
