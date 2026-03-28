@@ -50,7 +50,12 @@ class TicketController extends Controller
             'expected_approver_role_code' => $request->input('expected_approver_role_code'),
             'approval_status' => $request->input('approval_status'),
             'approval_queue' => $request->input('approval_queue'),
+            'assignment_queue' => $request->input('assignment_queue'),
         ];
+
+        if (($filters['approval_queue'] ?? null) === 'my' && blank($filters['approval_status'] ?? null)) {
+            $filters['approval_status'] = Ticket::APPROVAL_STATUS_PENDING;
+        }
 
         $tickets = $this->ticketService->paginate($filters, actor: $request->user());
 

@@ -13,12 +13,54 @@
     $canViewTicketOps = $user?->can('viewAny', $ticketModelClass) ?? false;
     $canCreateTicketOps = $user?->can('create', $ticketModelClass) ?? false;
     $canApproveTicketOps = $user?->hasAnyPermission(['ticket.approve_all', 'ticket.approve_department']) ?? false;
+    $canAssignTicketOps = $user?->hasAnyPermission(['ticket.assign_all', 'ticket.assign_department']) ?? false;
     $canViewEngineerTasks = $user?->hasPermission('engineer_task.view_assigned') ?? false;
     $canViewOwnInspectionTasks = $user?->hasPermission('inspection_task.view_assigned') ?? false;
     $canViewOwnInspectionResults = $user?->hasPermission('inspection_result.view_assigned') ?? false;
     $canViewEngineeringBoard = $user?->hasAnyPermission(['dashboard.view_ops', 'workforce.manage', 'engineer_task.view_assigned']) ?? false;
     $isSuperAdmin = $user?->role === 'super_admin';
     $showConfiguration = $canManageOrganization || $canManageWorkforce || $canManageAssets || $canManageTaxonomy || $canManageSla || $canManageInspectionTemplate || $canManageAccess;
+    $needsApprovalCount = 0;
+
+    if ($canApproveTicketOps && $user !== null) {
+        $needsApprovalCount = \App\Models\Ticket::query()
+            ->where('approval_status', \App\Models\Ticket::APPROVAL_STATUS_PENDING)
+            ->where(function ($query) use ($user): void {
+                $query->where('expected_approver_id', $user->id)
+                    ->orWhere('expected_approver_role_code', $user->role);
+            })
+            ->when(! $user->hasPermission('ticket.view_all'), function ($query) use ($user): void {
+                $query->where(function ($scopedQuery) use ($user): void {
+                    $hasScope = false;
+
+                    if ($user->hasAnyPermission(['ticket.approve_all', 'ticket.approve_department'])) {
+                        $scopedQuery->orWhere('expected_approver_id', $user->id)
+                            ->orWhere('expected_approver_role_code', $user->role);
+                        $hasScope = true;
+                    }
+
+                    if ($user->hasPermission('ticket.view_department') && $user->department_id !== null) {
+                        $scopedQuery->orWhere('requester_department_id', $user->department_id);
+                        $hasScope = true;
+                    }
+
+                    if ($user->hasPermission('ticket.view_assigned')) {
+                        $scopedQuery->orWhere('assigned_engineer_id', $user->id);
+                        $hasScope = true;
+                    }
+
+                    if ($user->hasPermission('ticket.view_own')) {
+                        $scopedQuery->orWhere('requester_id', $user->id);
+                        $hasScope = true;
+                    }
+
+                    if (! $hasScope) {
+                        $scopedQuery->whereRaw('1 = 0');
+                    }
+                });
+            })
+            ->count();
+    }
 @endphp
 
 <div class="app-sidebar">
@@ -74,7 +116,19 @@
                                 <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('tickets.index') }}">{{ $user?->role === 'requester' ? 'My Tickets' : 'Ticket List' }}</a></li>
                             @endif
                             @if ($canApproveTicketOps)
-                                <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('tickets.index', ['approval_queue' => 'my']) }}">Needs Approval</a></li>
+                                <li class="sub-nav-item">
+                                    <a class="sub-nav-link d-flex justify-content-between align-items-center gap-2" href="{{ route('tickets.index', ['approval_queue' => 'my']) }}">
+                                        <span>Needs Approval</span>
+                                        @if ($needsApprovalCount > 0)
+                                            <span class="badge bg-danger-subtle text-danger">{{ number_format($needsApprovalCount) }}</span>
+                                        @else
+                                            <span class="badge bg-light text-muted border">0</span>
+                                        @endif
+                                    </a>
+                                </li>
+                            @endif
+                            @if ($canAssignTicketOps)
+                                <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('tickets.index', ['assignment_queue' => 'ready']) }}">Ready for Assignment</a></li>
                             @endif
                             @if ($canCreateTicketOps)
                                 <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('tickets.create') }}">Create Ticket</a></li>

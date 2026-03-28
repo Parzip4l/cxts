@@ -74,7 +74,11 @@ class TicketService
             ->when($filters['assigned_engineer_id'] ?? null, fn ($query, $engineerId) => $query->where('assigned_engineer_id', $engineerId))
             ->when($filters['expected_approver_id'] ?? null, fn ($query, $approverId) => $query->where('expected_approver_id', $approverId))
             ->when($filters['expected_approver_role_code'] ?? null, fn ($query, $roleCode) => $query->where('expected_approver_role_code', $roleCode))
-            ->when($filters['approval_status'] ?? null, fn ($query, $approvalStatus) => $query->where('approval_status', $approvalStatus));
+            ->when($filters['approval_status'] ?? null, fn ($query, $approvalStatus) => $query->where('approval_status', $approvalStatus))
+            ->when(($filters['assignment_queue'] ?? null) === 'ready', function ($query) {
+                $query->whereNull('assigned_engineer_id')
+                    ->whereNotNull('assignment_ready_at');
+            });
 
         $this->applyAccessScope($query, $actor);
         $this->applyApprovalQueueScope($query, $filters, $actor);
@@ -660,6 +664,18 @@ class TicketService
 
         $query->where(function (Builder $scopedQuery) use ($actor): void {
             $hasScope = false;
+
+            if ($actor->hasAnyPermission(['ticket.approve_all', 'ticket.approve_department'])) {
+                if ($actor->id !== null) {
+                    $scopedQuery->orWhere('tickets.expected_approver_id', $actor->id);
+                    $hasScope = true;
+                }
+
+                if (filled($actor->role)) {
+                    $scopedQuery->orWhere('tickets.expected_approver_role_code', $actor->role);
+                    $hasScope = true;
+                }
+            }
 
             if ($actor->hasPermission('ticket.view_department') && $actor->department_id !== null) {
                 $scopedQuery->orWhere('tickets.requester_department_id', $actor->department_id);

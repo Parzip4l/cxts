@@ -629,13 +629,17 @@
                                 <?php endif; ?>
 
                                 <?php if(! $ticket->allow_direct_assignment && ! $ticket->isAssignmentReady() && ! $ticket->isRejected() && (! $ticket->requires_approval || $ticket->isApproved())): ?>
-                                    <button type="submit" class="btn btn-outline-primary" formaction="<?php echo e(route('tickets.mark-ready', $ticket)); ?>" name="decision" value="mark_ready">
+                                    <button type="submit" class="btn btn-outline-primary" formaction="<?php echo e(route('tickets.mark-ready', $ticket)); ?>" name="decision" value="mark_ready"
+                                        <?php if(! $currentUser?->can('markReady', $ticket)): echo 'disabled'; endif; ?>>
                                         Mark Ready For Assignment
                                     </button>
                                 <?php endif; ?>
                             </div>
                             <?php if($ticket->requires_approval && ! $ticket->canBeApprovedBy($currentUser)): ?>
                                 <div class="small text-muted mt-2">Aksi approve/reject hanya tersedia untuk approver yang ditetapkan atau fallback supervisor/admin.</div>
+                            <?php endif; ?>
+                            <?php if(! $ticket->allow_direct_assignment && ! $ticket->isAssignmentReady() && ! $ticket->isRejected() && (! $ticket->requires_approval || $ticket->isApproved()) && ! $currentUser?->can('markReady', $ticket)): ?>
+                                <div class="small text-muted mt-2">Aksi mark ready hanya tersedia untuk user yang berwenang melepas ticket ke queue assignment.</div>
                             <?php endif; ?>
                         </form>
                     <?php endif; ?>

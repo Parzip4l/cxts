@@ -23,6 +23,10 @@ class TicketPolicy
             return true;
         }
 
+        if ($ticket->canBeApprovedBy($user)) {
+            return true;
+        }
+
         if ($user->hasPermission('ticket.view_department')
             && $user->department_id !== null
             && (int) $ticket->requester_department_id === (int) $user->department_id) {
@@ -71,9 +75,7 @@ class TicketPolicy
             return true;
         }
 
-        return $user->hasPermission('ticket.approve_department')
-            && $user->department_id !== null
-            && (int) $ticket->requester_department_id === (int) $user->department_id;
+        return $user->hasPermission('ticket.approve_department');
     }
 
     public function reject(User $user, Ticket $ticket): bool
@@ -87,8 +89,15 @@ class TicketPolicy
             return true;
         }
 
-        return $user->hasPermission('ticket.mark_ready_department')
-            && $user->department_id !== null
+        if (! $user->hasPermission('ticket.mark_ready_department')) {
+            return false;
+        }
+
+        if ($ticket->canBeApprovedBy($user)) {
+            return true;
+        }
+
+        return $user->department_id !== null
             && (int) $ticket->requester_department_id === (int) $user->department_id;
     }
 
