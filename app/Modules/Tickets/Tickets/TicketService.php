@@ -77,6 +77,7 @@ class TicketService
             ->when($filters['approval_status'] ?? null, fn ($query, $approvalStatus) => $query->where('approval_status', $approvalStatus));
 
         $this->applyAccessScope($query, $actor);
+        $this->applyApprovalQueueScope($query, $filters, $actor);
 
         return $query->orderByDesc('created_at')
             ->paginate($perPage)
@@ -677,6 +678,39 @@ class TicketService
 
             if (! $hasScope) {
                 $scopedQuery->whereRaw('1 = 0');
+            }
+        });
+    }
+
+    private function applyApprovalQueueScope(Builder $query, array $filters, ?User $actor): void
+    {
+        if (($filters['approval_queue'] ?? null) !== 'my') {
+            return;
+        }
+
+        if ($actor === null) {
+            $query->whereRaw('1 = 0');
+
+            return;
+        }
+
+        $query->where('tickets.approval_status', Ticket::APPROVAL_STATUS_PENDING);
+
+        $query->where(function (Builder $approvalQuery) use ($actor): void {
+            $hasScope = false;
+
+            if ($actor->id !== null) {
+                $approvalQuery->orWhere('tickets.expected_approver_id', $actor->id);
+                $hasScope = true;
+            }
+
+            if (filled($actor->role)) {
+                $approvalQuery->orWhere('tickets.expected_approver_role_code', $actor->role);
+                $hasScope = true;
+            }
+
+            if (! $hasScope) {
+                $approvalQuery->whereRaw('1 = 0');
             }
         });
     }

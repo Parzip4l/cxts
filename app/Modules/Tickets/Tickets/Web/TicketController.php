@@ -49,6 +49,7 @@ class TicketController extends Controller
             'expected_approver_id' => $request->input('expected_approver_id'),
             'expected_approver_role_code' => $request->input('expected_approver_role_code'),
             'approval_status' => $request->input('approval_status'),
+            'approval_queue' => $request->input('approval_queue'),
         ];
 
         $tickets = $this->ticketService->paginate($filters, actor: $request->user());

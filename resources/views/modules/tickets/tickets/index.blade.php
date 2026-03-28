@@ -4,6 +4,9 @@
 @include('layouts.partials.page-title', ['title' => 'Ticketing', 'subtitle' => 'Tickets'])
 
 @php
+    $authUser = auth()->user();
+    $isRequesterView = $authUser?->role === 'requester';
+    $isApprovalQueue = ($filters['approval_queue'] ?? null) === 'my';
     $ticketCounts = [
         'total' => $tickets->total(),
         'pending_approval' => $tickets->getCollection()->filter(fn ($ticket) => $ticket->approval_status === \App\Models\Ticket::APPROVAL_STATUS_PENDING)->count(),
@@ -38,6 +41,7 @@
         ? ($approvalStatusOptions[$filters['approval_status']] ?? null)
         : null;
     $activeFilterSummary = array_filter([
+        $isApprovalQueue ? 'Queue: Needs Approval' : null,
         filled($filters['search'] ?? null) ? 'Search: ' . $filters['search'] : null,
         $selectedStatus ? 'Status: ' . $selectedStatus : null,
         $selectedPriority ? 'Priority: ' . $selectedPriority : null,
@@ -117,10 +121,18 @@
     <div class="card-header bg-transparent border-0 pt-4 pb-0">
         <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
             <div>
-                <h5 class="mb-1">Ticket Operations</h5>
-                <p class="text-muted mb-0 small">Mulai dari search, status, atau engineer. Buka filter lanjutan hanya saat perlu drill-down taxonomy atau approver.</p>
+                <h5 class="mb-1">{{ $isRequesterView ? 'My Tickets' : ($isApprovalQueue ? 'Approval Queue' : 'Ticket Operations') }}</h5>
+                <p class="text-muted mb-0 small">
+                    @if ($isRequesterView)
+                        Anda hanya melihat ticket yang Anda ajukan sendiri. Gunakan pencarian atau filter status untuk melacak progres permintaan Anda.
+                    @elseif ($isApprovalQueue)
+                        Queue ini difokuskan untuk ticket yang sedang menunggu keputusan approval dari peran atau identitas Anda.
+                    @else
+                        Mulai dari search, status, atau engineer. Buka filter lanjutan hanya saat perlu drill-down taxonomy atau approver.
+                    @endif
+                </p>
             </div>
-            <span class="badge bg-primary-subtle text-primary">Operational Queue</span>
+            <span class="badge bg-primary-subtle text-primary">{{ $isApprovalQueue ? 'Needs Approval' : ($isRequesterView ? 'Personal Queue' : 'Operational Queue') }}</span>
         </div>
     </div>
     <div class="card-body pt-3">
@@ -141,9 +153,15 @@
                         </button>
                         <a href="{{ route('tickets.index') }}" class="btn btn-outline-light">Reset</a>
                         <button class="btn btn-primary" type="submit">Apply Filters</button>
-                        <a href="{{ route('tickets.create') }}" class="btn btn-dark">Create Ticket</a>
+                        @can('create', \App\Models\Ticket::class)
+                            <a href="{{ route('tickets.create') }}" class="btn btn-dark">Create Ticket</a>
+                        @endcan
                     </div>
                 </div>
+
+                @if ($isApprovalQueue)
+                    <input type="hidden" name="approval_queue" value="my">
+                @endif
 
                 <div class="row g-3">
                     <div class="col-lg-4">

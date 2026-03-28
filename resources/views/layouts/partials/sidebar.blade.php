@@ -1,5 +1,6 @@
 @php
     $user = auth()->user();
+    $ticketModelClass = \App\Models\Ticket::class;
     $canViewOpsDashboard = $user?->hasPermission('dashboard.view_ops') ?? false;
     $canViewOwnPerformance = $user?->hasPermission('dashboard.view_own_performance') ?? false;
     $canManageOrganization = $user?->hasPermission('organization.manage') ?? false;
@@ -9,8 +10,9 @@
     $canManageSla = $user?->hasPermission('sla.manage') ?? false;
     $canManageInspectionTemplate = $user?->hasPermission('inspection_template.manage') ?? false;
     $canManageAccess = $user?->hasPermission('access.manage') ?? false;
-    $canViewTicketOps = $user?->hasAnyPermission(['ticket.view_all', 'ticket.view_department']) ?? false;
-    $canCreateTicketOps = $user?->hasAnyPermission(['ticket.create_any', 'ticket.create_self']) ?? false;
+    $canViewTicketOps = $user?->can('viewAny', $ticketModelClass) ?? false;
+    $canCreateTicketOps = $user?->can('create', $ticketModelClass) ?? false;
+    $canApproveTicketOps = $user?->hasAnyPermission(['ticket.approve_all', 'ticket.approve_department']) ?? false;
     $canViewEngineerTasks = $user?->hasPermission('engineer_task.view_assigned') ?? false;
     $canViewOwnInspectionTasks = $user?->hasPermission('inspection_task.view_assigned') ?? false;
     $canViewOwnInspectionResults = $user?->hasPermission('inspection_result.view_assigned') ?? false;
@@ -53,7 +55,7 @@
                     <span class="nav-text">My Profile</span>
                 </a>
             </li>
-@if ($canViewTicketOps || $canViewOpsDashboard)
+@if ($canViewTicketOps || $canCreateTicketOps || $canViewOpsDashboard)
                 <li class="menu-title">Operations</li>
 
                 @if ($canViewTicketOps || $canCreateTicketOps)
@@ -69,7 +71,10 @@
                     <div class="collapse" id="sidebarTicketingOps">
                         <ul class="nav sub-navbar-nav">
                             @if ($canViewTicketOps)
-                                <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('tickets.index') }}">Ticket List</a></li>
+                                <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('tickets.index') }}">{{ $user?->role === 'requester' ? 'My Tickets' : 'Ticket List' }}</a></li>
+                            @endif
+                            @if ($canApproveTicketOps)
+                                <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('tickets.index', ['approval_queue' => 'my']) }}">Needs Approval</a></li>
                             @endif
                             @if ($canCreateTicketOps)
                                 <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('tickets.create') }}">Create Ticket</a></li>
