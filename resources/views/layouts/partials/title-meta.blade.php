@@ -23,4 +23,6 @@
 <meta name="twitter:description" content="{{ $metaDescription }}" />
 
 <!-- App favicon -->
-<link rel="shortcut icon" href="/images/favicon.ico">
+<link rel="icon" type="image/png" href="{{ asset('images/icon.png') }}">
+<link rel="shortcut icon" href="{{ asset('images/icon.png') }}">
+<link rel="apple-touch-icon" href="{{ asset('images/icon.png') }}">

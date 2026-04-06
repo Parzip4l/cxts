@@ -23,5 +23,7 @@
 <meta name="twitter:description" content="<?php echo e($metaDescription); ?>" />
 
 <!-- App favicon -->
-<link rel="shortcut icon" href="/images/favicon.ico">
+<link rel="icon" type="image/png" href="<?php echo e(asset('images/icon.png')); ?>">
+<link rel="shortcut icon" href="<?php echo e(asset('images/icon.png')); ?>">
+<link rel="apple-touch-icon" href="<?php echo e(asset('images/icon.png')); ?>">
 <?php /**PATH /Users/muhamadsobirin/Documents/cxts/resources/views/layouts/partials/title-meta.blade.php ENDPATH**/ ?>
