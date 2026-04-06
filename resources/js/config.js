@@ -1,5 +1,5 @@
 /**
-* Theme: Taplox- Responsive Bootstrap 5 Admin Dashboard
+* Theme: CXTS- Responsive Bootstrap 5 Admin Dashboard
 * Author: Stackbros
 * Module/App: Theme Config Js
 */
@@ -7,7 +7,7 @@
 
 (function () {
 
-     var savedConfig = sessionStorage.getItem("__TAPLOX_CONFIG__");
+     var savedConfig = sessionStorage.getItem("__CXTS_CONFIG__");
 
      var html = document.getElementsByTagName("html")[0];
 

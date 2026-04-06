@@ -293,7 +293,7 @@ class EnterpriseBulkSeeder extends Seeder
 
         foreach ($engineerNames as $index => $name) {
             User::query()->updateOrCreate(
-                ['email' => 'engineer.'.Str::slug($name, '.').'@taplox.co.id'],
+                ['email' => 'engineer.'.Str::slug($name, '.').'@cxts.co.id'],
                 [
                     'name' => $name,
                     'email_verified_at' => now(),
@@ -308,7 +308,7 @@ class EnterpriseBulkSeeder extends Seeder
         $inspectionNames = ['Rina Maharani', 'Sari Kurnia', 'Taufik Hidayat', 'Vina Ardila', 'Yoga Pratama', 'Zahra Nabila'];
         foreach ($inspectionNames as $name) {
             User::query()->updateOrCreate(
-                ['email' => 'inspector.'.Str::slug($name, '.').'@taplox.co.id'],
+                ['email' => 'inspector.'.Str::slug($name, '.').'@cxts.co.id'],
                 [
                     'name' => $name,
                     'email_verified_at' => now(),
@@ -325,7 +325,7 @@ class EnterpriseBulkSeeder extends Seeder
             $departmentCode = $requesterDepartments[$i % count($requesterDepartments)];
 
             User::query()->updateOrCreate(
-                ['email' => sprintf('requester%02d@taplox.co.id', $i)],
+                ['email' => sprintf('requester%02d@cxts.co.id', $i)],
                 [
                     'name' => $faker->name(),
                     'email_verified_at' => now(),
@@ -338,8 +338,8 @@ class EnterpriseBulkSeeder extends Seeder
         }
 
         $supervisors = [
-            ['email' => 'supervisor.noc@taplox.co.id', 'name' => 'Rizky Nurhalim', 'department_code' => 'IT-NOC'],
-            ['email' => 'supervisor.field@taplox.co.id', 'name' => 'Dewi Puspita', 'department_code' => 'OPS-FIELD'],
+            ['email' => 'supervisor.noc@cxts.co.id', 'name' => 'Rizky Nurhalim', 'department_code' => 'IT-NOC'],
+            ['email' => 'supervisor.field@cxts.co.id', 'name' => 'Dewi Puspita', 'department_code' => 'OPS-FIELD'],
             ['email' => 'opsadmin2@demo.com', 'name' => 'Operations Admin 2', 'department_code' => 'OPS-HD'],
         ];
 

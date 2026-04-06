@@ -12,7 +12,7 @@ class="authentication-bg"
                         style="background: linear-gradient(145deg, #0f172a 0%, #1d4ed8 100%);">
                         <div>
                             <div class="mb-4">
-                                <img src="/images/logo-light.png" height="30" alt="logo light">
+                                <img src="/images/cxts-white.png" height="70" alt="logo light">
                             </div>
                             <span class="badge bg-white bg-opacity-10 border border-white border-opacity-25 mb-3">Service Operations Platform</span>
                             <h2 class="fw-bold mb-3 text-white">Kelola ticket, approval, SLA, dan engineering execution dalam satu alur.</h2>
@@ -38,16 +38,7 @@ class="authentication-bg"
                     <div class="col-lg-6">
                         <div class="h-100 p-4 p-lg-5">
                         <div class="text-center">
-                            <div class="mx-auto mb-4 text-center auth-logo">
-                                <a href="<?php echo e(route('any', 'index')); ?>" class="logo-dark">
-                                    <img src="/images/logo-dark.png" height="32" alt="logo dark">
-                                </a>
-
-                                <a href="<?php echo e(route('any', 'index')); ?>" class="logo-light">
-                                    <img src="/images/logo-light.png" height="28" alt="logo light">
-                                </a>
-                            </div>
-                            <h4 class="fw-bold text-dark mb-2">Masuk ke <?php echo e(config('app.name', 'CXTS')); ?></h4>
+                            <h4 class="fw-bold text-dark mb-2">Masuk ke CXTS</h4>
                             <p class="text-muted mb-0">Platform operasional untuk ticketing, SLA, approval, asset, dan inspection.</p>
                         </div>
 

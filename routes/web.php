@@ -111,6 +111,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function (): void {
     Route::prefix('tickets')->name('tickets.')->middleware('audit')->group(function (): void {
         Route::get('', [TicketController::class, 'index'])->name('index');
         Route::get('create', [TicketController::class, 'create'])->name('create');
+        Route::view('workflow-diagram', 'modules.tickets.tickets.workflow-diagram')->name('workflow-diagram');
         Route::post('', [TicketController::class, 'store'])->name('store');
         Route::get('{ticket}', [TicketController::class, 'show'])->name('show');
         Route::post('{ticket}/approve', [TicketController::class, 'approve'])->name('approve');

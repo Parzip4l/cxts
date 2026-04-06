@@ -1,5 +1,5 @@
 /**
- * Theme: Taplox- Responsive Bootstrap 5 Admin Dashboard
+ * Theme: CXTS- Responsive Bootstrap 5 Admin Dashboard
  * Module/App: Dashboard
  */
 

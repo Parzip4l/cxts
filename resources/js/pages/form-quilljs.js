@@ -1,5 +1,5 @@
 /*
-Template Name: Taplox - Responsive Bootstrap 5 Admin Dashboard
+Template Name: CXTS - Responsive Bootstrap 5 Admin Dashboard
 Author: Stackbros
 File: Quilljs init js
 */
@@ -17,4 +17,3 @@ var quill = new Quill('#snow-editor', {
 var quill = new Quill('#bubble-editor', {
     theme: 'bubble'
 });
-

@@ -1,5 +1,5 @@
 /*
-Template Name: Taplox- Responsive Bootstrap 5 Admin Dashboard
+Template Name: CXTS- Responsive Bootstrap 5 Admin Dashboard
 Author: Stackbros
 File: datatable js
 */
