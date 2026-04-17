@@ -28,6 +28,9 @@ class AssetController extends Controller
     {
         $locationViews = AssetLocation::query()
             ->where('is_active', true)
+            ->whereHas('assets')
+            ->withCount('assets')
+            ->orderByDesc('assets_count')
             ->orderBy('name')
             ->limit(3)
             ->get(['id', 'name']);
