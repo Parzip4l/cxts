@@ -19,6 +19,7 @@ use App\Modules\MasterData\RolePermissions\Web\RolePermissionController;
 use App\Modules\MasterData\Vendors\Web\VendorController;
 use App\Modules\Inspections\Inspections\Web\InspectionController;
 use App\Modules\Inspections\Results\Web\InspectionResultController;
+use App\Modules\ManualGuide\Web\ManualGuideController;
 use App\Modules\Inspections\PublicAccess\Web\PublicInspectionController;
 use App\Modules\Inspections\InspectionTemplates\Web\InspectionTemplateController;
 use App\Modules\Notifications\Web\NotificationController;
@@ -52,6 +53,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function (): void {
         ->name('engineer-performance')
         ->middleware('permission:dashboard.view_own_performance');
     Route::get('engineering', [EngineeringController::class, 'index'])->name('engineering.index');
+    Route::get('manual-guide', [ManualGuideController::class, 'index'])->name('manual-guide.index');
     Route::get('users/{user}/profile-photo', [MasterUserController::class, 'profilePhoto'])->name('users.profile-photo');
     Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.center');
     Route::get('audit-trail', [AuditTrailController::class, 'index'])->name('audit-trail.index')->middleware('role:super_admin');

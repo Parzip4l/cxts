@@ -97,6 +97,15 @@
                     <span class="nav-text">My Profile</span>
                 </a>
             </li>
+
+            <li class="nav-item">
+                <a class="nav-link <?php echo e(request()->routeIs('manual-guide.*') ? 'active' : ''); ?>" href="<?php echo e(route('manual-guide.index')); ?>">
+                    <span class="nav-icon">
+                        <iconify-icon icon="solar:book-bookmark-outline"></iconify-icon>
+                    </span>
+                    <span class="nav-text">Manual Guide</span>
+                </a>
+            </li>
 <?php if($canViewTicketOps || $canCreateTicketOps || $canViewOpsDashboard): ?>
                 <li class="menu-title">Operations</li>
 
