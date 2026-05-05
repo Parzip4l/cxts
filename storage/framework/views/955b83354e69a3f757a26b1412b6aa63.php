@@ -66,7 +66,7 @@
                               </div>
                               <div data-simplebar style="max-height: 250px;">
                                    <?php $__empty_1 = true; $__currentLoopData = $topbarNotifications; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $notification): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
-                                        <a href="<?php echo e($notification['url']); ?>" class="dropdown-item p-2 border-bottom text-wrap">
+                                        <a href="<?php echo e($notification['open_url']); ?>" class="dropdown-item p-2 border-bottom text-wrap <?php echo e($notification['is_read'] ? '' : 'bg-light bg-opacity-50'); ?>">
                                              <div class="d-flex">
                                                   <div class="flex-shrink-0">
                                                        <div class="avatar-sm me-2">
@@ -76,9 +76,22 @@
                                                        </div>
                                                   </div>
                                              <div class="flex-grow-1">
-                                                  <p class="mb-0 fw-medium"><?php echo e($notification['title']); ?></p>
+                                                  <div class="d-flex align-items-center gap-1">
+                                                       <?php if (! ($notification['is_read'])): ?>
+                                                            <span class="badge bg-danger rounded-pill" style="width: 8px; height: 8px; padding: 0;"></span>
+                                                       <?php endif; ?>
+                                                       <p class="mb-0 fw-medium"><?php echo e($notification['title']); ?></p>
+                                                  </div>
                                                   <p class="mb-0 text-wrap text-muted"><?php echo e($notification['message']); ?></p>
-                                                  <small class="text-muted"><?php echo e($notification['occurred_at']->diffForHumans()); ?></small>
+                                                  <small class="text-muted">
+                                                       <?php echo e($notification['occurred_at']->diffForHumans()); ?>
+
+                                                       <?php if($notification['is_acknowledged']): ?>
+                                                            · acknowledged
+                                                       <?php elseif($notification['is_read']): ?>
+                                                            · read
+                                                       <?php endif; ?>
+                                                  </small>
                                              </div>
                                              </div>
                                         </a>
@@ -86,8 +99,14 @@
                                         <div class="p-3 text-center text-muted small">No notifications yet.</div>
                                    <?php endif; ?>
                               </div>
-                              <div class="text-center p-2">
-                                   <a href="<?php echo e(route('notifications.center')); ?>" class="btn btn-primary btn-sm">View All Notification <i
+                              <div class="d-flex justify-content-center gap-2 p-2">
+                                   <?php if($topbarNotificationCount > 0): ?>
+                                        <form method="POST" action="<?php echo e(route('notifications.read-all')); ?>">
+                                             <?php echo csrf_field(); ?>
+                                             <button type="submit" class="btn btn-outline-secondary btn-sm">Mark Read</button>
+                                        </form>
+                                   <?php endif; ?>
+                                   <a href="<?php echo e(route('notifications.center')); ?>" class="btn btn-primary btn-sm">View All <i
                                              class="bx bx-right-arrow-alt ms-1"></i></a>
                               </div>
                          </div>

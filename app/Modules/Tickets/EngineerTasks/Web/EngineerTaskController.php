@@ -7,6 +7,7 @@ use App\Models\Ticket;
 use App\Models\TicketStatus;
 use App\Modules\MasterData\EngineerSchedules\EngineerScheduleService;
 use App\Modules\Tickets\EngineerTasks\EngineerTaskService;
+use App\Modules\Tickets\EngineerTasks\Requests\CompleteTaskRequest;
 use App\Modules\Tickets\EngineerTasks\Requests\StoreTaskWorklogRequest;
 use App\Modules\Tickets\EngineerTasks\Requests\TransitionTaskRequest;
 use Illuminate\Http\RedirectResponse;
@@ -70,6 +71,8 @@ class EngineerTaskController extends Controller
             'asset:id,name',
             'assetLocation:id,name',
             'worklogs.user:id,name',
+            'attachments',
+            'attachments.uploadedBy:id,name',
             'activities.actor:id,name',
             'activities.oldStatus:id,name',
             'activities.newStatus:id,name',
@@ -102,12 +105,25 @@ class EngineerTaskController extends Controller
         return back()->with('success', 'Task resumed.');
     }
 
-    public function complete(TransitionTaskRequest $request, Ticket $ticket): RedirectResponse
+    public function complete(CompleteTaskRequest $request, Ticket $ticket): RedirectResponse
     {
         $this->authorize('work', $ticket);
-        $this->engineerTaskService->complete($ticket, $request->user(), $request->validated('notes'));
+        $this->engineerTaskService->complete(
+            $ticket,
+            $request->user(),
+            $request->validated('notes'),
+            $request->file('completion_evidences', []),
+        );
 
-        return back()->with('success', 'Task completed.');
+        return back()->with('success', 'Task completed with completion evidence.');
+    }
+
+    public function pendingCustomer(TransitionTaskRequest $request, Ticket $ticket): RedirectResponse
+    {
+        $this->authorize('work', $ticket);
+        $this->engineerTaskService->pendingCustomer($ticket, $request->user(), $request->validated('notes'));
+
+        return back()->with('success', 'Task moved to Pending Customer.');
     }
 
     public function storeWorklog(StoreTaskWorklogRequest $request, Ticket $ticket): RedirectResponse

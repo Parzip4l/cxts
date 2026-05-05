@@ -93,6 +93,10 @@ class TicketResource extends JsonResource
             'can_pause_work' => $this->canPauseWork(),
             'can_resume_work' => $this->canResumeWork(),
             'can_complete_work' => $this->canCompleteWork(),
+            'can_mark_pending_customer' => $this->canMarkPendingCustomer(),
+            'can_close_ticket' => $this->canCloseTicket(),
+            'can_reopen_ticket' => $this->canReopenTicket(),
+            'can_cancel_ticket' => $this->canCancelTicket(),
             'engineer_recommendation' => $this->when(
                 $hasEngineerRecommendation || isset($this->engineer_recommendation),
                 fn () => $this->engineer_recommendation
@@ -141,12 +145,57 @@ class TicketResource extends JsonResource
         return $this->started_at !== null;
     }
 
+    private function canMarkPendingCustomer(): bool
+    {
+        if ($this->isTerminal()) {
+            return false;
+        }
+
+        return $this->started_at !== null
+            && strtoupper((string) ($this->status?->code ?? '')) !== 'PENDING_CUSTOMER';
+    }
+
+    private function canCloseTicket(): bool
+    {
+        $statusCode = strtoupper((string) ($this->status?->code ?? ''));
+
+        if (in_array($statusCode, ['CLOSED', 'CANCELLED'], true) || $this->closed_at !== null) {
+            return false;
+        }
+
+        return $this->completed_at !== null || $statusCode === 'COMPLETED';
+    }
+
+    private function canReopenTicket(): bool
+    {
+        $statusCode = strtoupper((string) ($this->status?->code ?? ''));
+
+        return $this->completed_at !== null
+            || $this->closed_at !== null
+            || in_array($statusCode, ['COMPLETED', 'CLOSED', 'CANCELLED'], true);
+    }
+
+    private function canCancelTicket(): bool
+    {
+        $statusCode = strtoupper((string) ($this->status?->code ?? ''));
+
+        if (in_array($statusCode, ['REJECTED', 'COMPLETED', 'CLOSED', 'CANCELLED'], true)) {
+            return false;
+        }
+
+        if ($this->completed_at !== null || $this->closed_at !== null) {
+            return false;
+        }
+
+        return true;
+    }
+
     private function isTerminal(): bool
     {
         if ($this->completed_at !== null || $this->closed_at !== null) {
             return true;
         }
 
-        return in_array(strtoupper((string) ($this->status?->code ?? '')), ['COMPLETED', 'CLOSED', 'REJECTED'], true);
+        return in_array(strtoupper((string) ($this->status?->code ?? '')), ['COMPLETED', 'CLOSED', 'REJECTED', 'CANCELLED'], true);
     }
 }

@@ -10,6 +10,8 @@ use App\Models\TicketStatus;
 use App\Models\TicketSubcategory;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class EngineerTaskApiTest extends TestCase
@@ -18,6 +20,8 @@ class EngineerTaskApiTest extends TestCase
 
     public function test_engineer_can_run_task_lifecycle_via_api(): void
     {
+        Storage::fake('local');
+
         $department = Department::query()->create([
             'code' => 'DEP-ENG',
             'name' => 'Engineering',
@@ -62,9 +66,11 @@ class EngineerTaskApiTest extends TestCase
         $assigned = TicketStatus::query()->create(['code' => 'ASSIGNED', 'name' => 'Assigned', 'is_open' => true, 'is_active' => true]);
         $inProgress = TicketStatus::query()->create(['code' => 'IN_PROGRESS', 'name' => 'In Progress', 'is_open' => true, 'is_in_progress' => true, 'is_active' => true]);
         $onHold = TicketStatus::query()->create(['code' => 'ON_HOLD', 'name' => 'On Hold', 'is_open' => true, 'is_active' => true]);
+        $pendingCustomer = TicketStatus::query()->updateOrCreate(['code' => 'PENDING_CUSTOMER'], ['name' => 'Pending Customer', 'is_open' => true, 'is_active' => true]);
         $completed = TicketStatus::query()->create(['code' => 'COMPLETED', 'name' => 'Completed', 'is_open' => false, 'is_closed' => true, 'is_active' => true]);
         TicketStatus::query()->create(['code' => 'NEW', 'name' => 'New', 'is_open' => true, 'is_active' => true]);
         TicketStatus::query()->create(['code' => 'CLOSED', 'name' => 'Closed', 'is_open' => false, 'is_closed' => true, 'is_active' => true]);
+        TicketStatus::query()->updateOrCreate(['code' => 'CANCELLED'], ['name' => 'Cancelled', 'is_open' => false, 'is_closed' => true, 'is_active' => true]);
 
         $ticket = Ticket::query()->create([
             'ticket_number' => 'TCK-TEST-0001',
@@ -107,6 +113,13 @@ class EngineerTaskApiTest extends TestCase
             ->assertJsonPath('data.ticket_status_id', $onHold->id);
 
         $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/v1/engineer/tasks/'.$ticket->id.'/pending-customer', [
+                'notes' => 'Menunggu konfirmasi requester terkait hasil pengecekan awal.',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.ticket_status_id', $pendingCustomer->id);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
             ->postJson('/api/v1/engineer/tasks/'.$ticket->id.'/resume', [
                 'notes' => 'Akses sudah diberikan, lanjut pemeriksaan.',
             ])
@@ -123,9 +136,13 @@ class EngineerTaskApiTest extends TestCase
             ->assertCreated()
             ->assertJsonPath('data.ticket_id', $ticket->id);
 
-        $this->withHeader('Authorization', 'Bearer '.$token)
-            ->postJson('/api/v1/engineer/tasks/'.$ticket->id.'/complete', [
+        $this
+            ->withHeader('Authorization', 'Bearer '.$token)
+            ->post('/api/v1/engineer/tasks/'.$ticket->id.'/complete', [
                 'notes' => 'Issue selesai setelah optimasi konfigurasi QoS.',
+                'completion_evidences' => [
+                    UploadedFile::fake()->image('completion-evidence.jpg'),
+                ],
             ])
             ->assertOk()
             ->assertJsonPath('data.ticket_status_id', $completed->id);
@@ -140,6 +157,12 @@ class EngineerTaskApiTest extends TestCase
             'user_id' => $engineer->id,
         ]);
 
+        $this->assertDatabaseHas('ticket_attachments', [
+            'ticket_id' => $ticket->id,
+            'uploaded_by_id' => $engineer->id,
+            'original_name' => 'completion-evidence.jpg',
+        ]);
+
         $this->assertDatabaseHas('ticket_activities', [
             'ticket_id' => $ticket->id,
             'activity_type' => 'work_completed',
@@ -148,6 +171,8 @@ class EngineerTaskApiTest extends TestCase
 
     public function test_engineer_cannot_start_twice_or_transition_after_task_completed(): void
     {
+        Storage::fake('local');
+
         $department = Department::query()->create([
             'code' => 'DEP-ENG-02',
             'name' => 'Engineering 02',
@@ -195,6 +220,8 @@ class EngineerTaskApiTest extends TestCase
         TicketStatus::query()->create(['code' => 'NEW', 'name' => 'New', 'is_open' => true, 'is_active' => true]);
         TicketStatus::query()->create(['code' => 'ON_HOLD', 'name' => 'On Hold', 'is_open' => true, 'is_active' => true]);
         TicketStatus::query()->create(['code' => 'CLOSED', 'name' => 'Closed', 'is_open' => false, 'is_closed' => true, 'is_active' => true]);
+        TicketStatus::query()->updateOrCreate(['code' => 'PENDING_CUSTOMER'], ['name' => 'Pending Customer', 'is_open' => true, 'is_active' => true]);
+        TicketStatus::query()->updateOrCreate(['code' => 'CANCELLED'], ['name' => 'Cancelled', 'is_open' => false, 'is_closed' => true, 'is_active' => true]);
 
         $ticket = Ticket::query()->create([
             'ticket_number' => 'TCK-GUARD-0001',
@@ -229,6 +256,17 @@ class EngineerTaskApiTest extends TestCase
 
         $this->withHeader('Authorization', 'Bearer '.$token)
             ->postJson('/api/v1/engineer/tasks/'.$ticket->id.'/complete')
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['notes', 'completion_evidences']);
+
+        $this
+            ->withHeader('Authorization', 'Bearer '.$token)
+            ->post('/api/v1/engineer/tasks/'.$ticket->id.'/complete', [
+                'notes' => 'Pekerjaan selesai dan evidence sudah dilampirkan.',
+                'completion_evidences' => [
+                    UploadedFile::fake()->image('guard-completion.png'),
+                ],
+            ])
             ->assertOk()
             ->assertJsonPath('data.ticket_status_id', $completed->id);
 

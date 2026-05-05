@@ -144,6 +144,34 @@ class TicketController extends Controller
         return new TicketResource($this->ticketService->markReadyForAssignment($ticket, $request->user(), $request->validated('notes')));
     }
 
+    public function pendingCustomer(TicketDecisionRequest $request, Ticket $ticket): TicketResource
+    {
+        $this->authorize('pendingCustomer', $ticket);
+
+        return new TicketResource($this->ticketService->markPendingCustomer($ticket, $request->user(), $request->validated('notes')));
+    }
+
+    public function close(TicketDecisionRequest $request, Ticket $ticket): TicketResource
+    {
+        $this->authorize('close', $ticket);
+
+        return new TicketResource($this->ticketService->close($ticket, $request->user(), $request->validated('notes')));
+    }
+
+    public function reopen(TicketDecisionRequest $request, Ticket $ticket): TicketResource
+    {
+        $this->authorize('reopen', $ticket);
+
+        return new TicketResource($this->ticketService->reopen($ticket, $request->user(), $request->validated('notes')));
+    }
+
+    public function cancel(TicketDecisionRequest $request, Ticket $ticket): TicketResource
+    {
+        $this->authorize('cancel', $ticket);
+
+        return new TicketResource($this->ticketService->cancel($ticket, $request->user(), $request->validated('notes')));
+    }
+
     public function destroy(Ticket $ticket): JsonResponse
     {
         $ticket->delete();

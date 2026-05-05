@@ -112,4 +112,24 @@ class TicketPolicy
         return $user->hasPermission('engineer_task.worklog_assigned')
             && (int) $ticket->assigned_engineer_id === (int) $user->id;
     }
+
+    public function pendingCustomer(User $user, Ticket $ticket): bool
+    {
+        return $this->work($user, $ticket) || $this->assign($user, $ticket);
+    }
+
+    public function close(User $user, Ticket $ticket): bool
+    {
+        return $this->assign($user, $ticket);
+    }
+
+    public function reopen(User $user, Ticket $ticket): bool
+    {
+        return $this->assign($user, $ticket);
+    }
+
+    public function cancel(User $user, Ticket $ticket): bool
+    {
+        return $this->assign($user, $ticket);
+    }
 }

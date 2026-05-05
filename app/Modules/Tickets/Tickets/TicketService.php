@@ -31,8 +31,10 @@ class TicketService
     public const STATUS_ASSIGNED = 'ASSIGNED';
     public const STATUS_IN_PROGRESS = 'IN_PROGRESS';
     public const STATUS_ON_HOLD = 'ON_HOLD';
+    public const STATUS_PENDING_CUSTOMER = 'PENDING_CUSTOMER';
     public const STATUS_COMPLETED = 'COMPLETED';
     public const STATUS_CLOSED = 'CLOSED';
+    public const STATUS_CANCELLED = 'CANCELLED';
 
     public function __construct(
         private readonly SLAResolverService $slaResolver,
@@ -385,11 +387,23 @@ class TicketService
         });
     }
 
-    public function completeWork(Ticket $ticket, User $actor, ?string $notes = null): Ticket
+    public function completeWork(Ticket $ticket, User $actor, ?string $notes = null, array $completionEvidences = []): Ticket
     {
         $this->ensureCanCompleteWork($ticket);
 
-        return DB::transaction(function () use ($ticket, $actor, $notes): Ticket {
+        if ($notes === null || trim($notes) === '') {
+            throw ValidationException::withMessages([
+                'notes' => ['Resolution notes wajib diisi sebelum menyelesaikan task.'],
+            ]);
+        }
+
+        if ($completionEvidences === []) {
+            throw ValidationException::withMessages([
+                'completion_evidences' => ['Minimal satu foto evidence wajib diupload sebelum menyelesaikan task.'],
+            ]);
+        }
+
+        return DB::transaction(function () use ($ticket, $actor, $notes, $completionEvidences): Ticket {
             $completed = $this->findStatusByCode(self::STATUS_COMPLETED);
             $oldStatusId = $ticket->ticket_status_id;
             $completedAt = CarbonImmutable::now();
@@ -413,16 +427,141 @@ class TicketService
                 'last_status_changed_at' => now(),
             ]);
 
+            $this->addWorklog($ticket, $actor, [
+                'log_type' => 'resolution',
+                'description' => $notes,
+            ]);
+
+            $this->storeAttachments($ticket, $completionEvidences, $actor);
+
+            $this->logActivity($ticket, $actor, 'work_completed', $oldStatusId, $completed?->id, [
+                'notes' => $notes,
+                'evidence_count' => count($completionEvidences),
+            ]);
+
+            return $this->syncSlaState($ticket, $actor, $completedAt)->fresh($this->ticketRelations());
+        });
+    }
+
+    public function markPendingCustomer(Ticket $ticket, User $actor, ?string $notes = null): Ticket
+    {
+        $this->ensureCanMarkPendingCustomer($ticket);
+
+        return DB::transaction(function () use ($ticket, $actor, $notes): Ticket {
+            $pendingCustomer = $this->findStatusByCode(self::STATUS_PENDING_CUSTOMER);
+            $oldStatusId = $ticket->ticket_status_id;
+            $pendingAt = CarbonImmutable::now();
+            $pausedAt = $ticket->paused_at !== null
+                ? CarbonImmutable::instance($ticket->paused_at)
+                : $pendingAt;
+
+            $ticket = $this->syncSlaState($ticket, $actor, $pendingAt);
+
+            $ticket->update([
+                'paused_at' => $pausedAt,
+                'ticket_status_id' => $pendingCustomer?->id ?? $ticket->ticket_status_id,
+                'updated_by_id' => $actor->id,
+                'last_status_changed_at' => $pendingAt,
+            ]);
+
             if ($notes !== null && $notes !== '') {
                 $this->addWorklog($ticket, $actor, [
-                    'log_type' => 'resolution',
+                    'log_type' => 'progress',
                     'description' => $notes,
                 ]);
             }
 
-            $this->logActivity($ticket, $actor, 'work_completed', $oldStatusId, $completed?->id, ['notes' => $notes]);
+            $this->logActivity($ticket, $actor, 'ticket_pending_customer', $oldStatusId, $pendingCustomer?->id, [
+                'notes' => $notes,
+                'paused_at' => $pausedAt->toIso8601String(),
+            ]);
 
-            return $this->syncSlaState($ticket, $actor, $completedAt)->fresh($this->ticketRelations());
+            return $ticket->fresh($this->ticketRelations());
+        });
+    }
+
+    public function close(Ticket $ticket, User $actor, ?string $notes = null): Ticket
+    {
+        $this->ensureCanClose($ticket);
+
+        return DB::transaction(function () use ($ticket, $actor, $notes): Ticket {
+            $closed = $this->findStatusByCode(self::STATUS_CLOSED);
+            $oldStatusId = $ticket->ticket_status_id;
+            $closedAt = CarbonImmutable::now();
+
+            $ticket = $this->syncSlaState($ticket, $actor, $closedAt);
+
+            $ticket->update([
+                'closed_at' => $closedAt,
+                'ticket_status_id' => $closed?->id ?? $ticket->ticket_status_id,
+                'updated_by_id' => $actor->id,
+                'last_status_changed_at' => $closedAt,
+            ]);
+
+            $this->logActivity($ticket, $actor, 'ticket_closed', $oldStatusId, $closed?->id, [
+                'notes' => $notes,
+                'closed_at' => $closedAt->toIso8601String(),
+            ]);
+
+            return $ticket->fresh($this->ticketRelations());
+        });
+    }
+
+    public function reopen(Ticket $ticket, User $actor, ?string $notes = null): Ticket
+    {
+        $this->ensureCanReopen($ticket);
+
+        return DB::transaction(function () use ($ticket, $actor, $notes): Ticket {
+            $reopenedAt = CarbonImmutable::now();
+            $reopenedStatus = $ticket->assigned_engineer_id !== null
+                ? $this->findStatusByCode(self::STATUS_ASSIGNED)
+                : $this->findStatusByCode(self::STATUS_NEW);
+            $oldStatusId = $ticket->ticket_status_id;
+
+            $ticket->update([
+                'started_at' => null,
+                'completed_at' => null,
+                'closed_at' => null,
+                'resolved_at' => null,
+                'paused_at' => null,
+                'ticket_status_id' => $reopenedStatus?->id ?? $ticket->ticket_status_id,
+                'updated_by_id' => $actor->id,
+                'last_status_changed_at' => $reopenedAt,
+            ]);
+
+            $this->logActivity($ticket, $actor, 'ticket_reopened', $oldStatusId, $reopenedStatus?->id, [
+                'notes' => $notes,
+                'reopen_target_status' => $reopenedStatus?->code,
+            ]);
+
+            return $this->syncSlaState($ticket, $actor, $reopenedAt)->fresh($this->ticketRelations());
+        });
+    }
+
+    public function cancel(Ticket $ticket, User $actor, ?string $notes = null): Ticket
+    {
+        $this->ensureCanCancel($ticket);
+
+        return DB::transaction(function () use ($ticket, $actor, $notes): Ticket {
+            $cancelled = $this->findStatusByCode(self::STATUS_CANCELLED);
+            $oldStatusId = $ticket->ticket_status_id;
+            $cancelledAt = CarbonImmutable::now();
+
+            $ticket = $this->syncSlaState($ticket, $actor, $cancelledAt);
+
+            $ticket->update([
+                'closed_at' => $cancelledAt,
+                'ticket_status_id' => $cancelled?->id ?? $ticket->ticket_status_id,
+                'updated_by_id' => $actor->id,
+                'last_status_changed_at' => $cancelledAt,
+            ]);
+
+            $this->logActivity($ticket, $actor, 'ticket_cancelled', $oldStatusId, $cancelled?->id, [
+                'notes' => $notes,
+                'cancelled_at' => $cancelledAt->toIso8601String(),
+            ]);
+
+            return $ticket->fresh($this->ticketRelations());
         });
     }
 
@@ -580,6 +719,21 @@ class TicketService
         }
     }
 
+    private function ensureCanMarkPendingCustomer(Ticket $ticket): void
+    {
+        if ($this->isTerminalStatus($ticket)) {
+            $this->throwInvalidAction('Ticket sudah selesai, aksi pending customer tidak tersedia.');
+        }
+
+        if ($ticket->started_at === null) {
+            $this->throwInvalidAction('Ticket belum dikerjakan. Mulai pekerjaan terlebih dahulu sebelum menunggu customer.');
+        }
+
+        if ($this->resolveStatusCode($ticket) === self::STATUS_PENDING_CUSTOMER) {
+            $this->throwInvalidAction('Ticket ini sudah berada pada status pending customer.');
+        }
+    }
+
     private function ensureCanPauseWork(Ticket $ticket): void
     {
         if ($this->isTerminalStatus($ticket)) {
@@ -621,13 +775,58 @@ class TicketService
         }
     }
 
+    private function ensureCanClose(Ticket $ticket): void
+    {
+        if ($this->resolveStatusCode($ticket) === self::STATUS_CANCELLED) {
+            $this->throwInvalidAction('Ticket yang sudah dibatalkan tidak bisa di-close.');
+        }
+
+        if ($this->resolveStatusCode($ticket) === self::STATUS_CLOSED || $ticket->closed_at !== null) {
+            $this->throwInvalidAction('Ticket ini sudah closed.');
+        }
+
+        if ($ticket->completed_at === null && $this->resolveStatusCode($ticket) !== self::STATUS_COMPLETED) {
+            $this->throwInvalidAction('Ticket hanya bisa di-close setelah engineer menyelesaikan pekerjaan.');
+        }
+    }
+
+    private function ensureCanReopen(Ticket $ticket): void
+    {
+        if ($ticket->completed_at === null
+            && $ticket->closed_at === null
+            && ! in_array($this->resolveStatusCode($ticket), [self::STATUS_COMPLETED, self::STATUS_CLOSED, self::STATUS_CANCELLED], true)) {
+            $this->throwInvalidAction('Ticket ini belum berada pada status yang bisa di-reopen.');
+        }
+    }
+
+    private function ensureCanCancel(Ticket $ticket): void
+    {
+        $statusCode = $this->resolveStatusCode($ticket);
+
+        if ($statusCode === self::STATUS_CANCELLED) {
+            $this->throwInvalidAction('Ticket ini sudah dibatalkan.');
+        }
+
+        if ($statusCode === self::STATUS_REJECTED) {
+            $this->throwInvalidAction('Ticket yang sudah ditolak tidak bisa dibatalkan lewat aksi ini.');
+        }
+
+        if ($statusCode === self::STATUS_CLOSED || $ticket->closed_at !== null) {
+            $this->throwInvalidAction('Ticket yang sudah closed tidak bisa dibatalkan.');
+        }
+
+        if ($ticket->completed_at !== null || $statusCode === self::STATUS_COMPLETED) {
+            $this->throwInvalidAction('Ticket yang sudah completed perlu di-close atau di-reopen, bukan dibatalkan.');
+        }
+    }
+
     private function isTerminalStatus(Ticket $ticket): bool
     {
         if ($ticket->completed_at !== null || $ticket->closed_at !== null) {
             return true;
         }
 
-        return in_array($this->resolveStatusCode($ticket), [self::STATUS_COMPLETED, self::STATUS_CLOSED, self::STATUS_REJECTED], true);
+        return in_array($this->resolveStatusCode($ticket), [self::STATUS_COMPLETED, self::STATUS_CLOSED, self::STATUS_REJECTED, self::STATUS_CANCELLED], true);
     }
 
     private function resolveStatusCode(Ticket $ticket): ?string

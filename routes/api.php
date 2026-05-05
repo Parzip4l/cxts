@@ -84,6 +84,10 @@ Route::prefix('v1')->name('api.v1.')->group(function (): void {
         Route::post('/tickets/{ticket}/approve', [TicketController::class, 'approve'])->name('tickets.approve');
         Route::post('/tickets/{ticket}/reject', [TicketController::class, 'reject'])->name('tickets.reject');
         Route::post('/tickets/{ticket}/mark-ready', [TicketController::class, 'markReady'])->name('tickets.mark-ready');
+        Route::post('/tickets/{ticket}/pending-customer', [TicketController::class, 'pendingCustomer'])->name('tickets.pending-customer');
+        Route::post('/tickets/{ticket}/close', [TicketController::class, 'close'])->name('tickets.close');
+        Route::post('/tickets/{ticket}/reopen', [TicketController::class, 'reopen'])->name('tickets.reopen');
+        Route::post('/tickets/{ticket}/cancel', [TicketController::class, 'cancel'])->name('tickets.cancel');
         Route::post('/tickets/{ticket}/assign', [TicketController::class, 'assign'])->name('tickets.assign');
         Route::get('/tickets/{ticket}/attachments/{attachment}', [TicketController::class, 'showAttachment'])->name('tickets.attachments.show');
 
@@ -104,6 +108,7 @@ Route::prefix('v1')->name('api.v1.')->group(function (): void {
             Route::post('/tasks/{ticket}/pause', [EngineerTaskController::class, 'pause'])->name('tasks.pause');
             Route::post('/tasks/{ticket}/resume', [EngineerTaskController::class, 'resume'])->name('tasks.resume');
             Route::post('/tasks/{ticket}/complete', [EngineerTaskController::class, 'complete'])->name('tasks.complete');
+            Route::post('/tasks/{ticket}/pending-customer', [EngineerTaskController::class, 'pendingCustomer'])->name('tasks.pending-customer');
             Route::post('/tasks/{ticket}/worklogs', [EngineerTaskController::class, 'storeWorklog'])->name('tasks.worklogs.store');
         });
 

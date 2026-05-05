@@ -9,7 +9,9 @@ use App\Models\Ticket;
 use App\Models\TicketSubcategory;
 use App\Models\User;
 use App\Modules\Dashboards\Operations\OperationsDashboardService;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use Illuminate\View\View;
 
 class OperationsDashboardController extends Controller
@@ -18,10 +20,24 @@ class OperationsDashboardController extends Controller
     {
     }
 
-    public function index(Request $request): View
+    public function index(Request $request): View|RedirectResponse
     {
         $filters = $this->filters($request);
         $user = $request->user();
+
+        if (! $user?->hasPermission('dashboard.view_ops')) {
+            if ($user?->role === 'requester') {
+                return redirect()->route('tickets.index');
+            }
+
+            if ($user?->role === 'engineer') {
+                return redirect()->route('engineer-tasks.index');
+            }
+
+            if ($user?->role === 'inspection_officer') {
+                return redirect()->route('inspections.index');
+            }
+        }
 
         return view('modules.dashboard.operations.index', [
             'filters' => $filters,
@@ -65,6 +81,68 @@ class OperationsDashboardController extends Controller
             'data' => $this->dashboardService->executiveReport($request->user(), $filters),
             'filterOptions' => $this->filterOptions(),
         ]);
+    }
+
+    public function exportReport(Request $request): StreamedResponse
+    {
+        $filters = $this->filters($request);
+        $data = $this->dashboardService->executiveReport($request->user(), $filters);
+        $filename = 'cxts-executive-report-' . now()->format('Ymd-His') . '.csv';
+
+        return response()->streamDownload(function () use ($data): void {
+            $handle = fopen('php://output', 'w');
+
+            $writeSection = function (string $title) use ($handle): void {
+                fputcsv($handle, []);
+                fputcsv($handle, [$title]);
+            };
+
+            $current = $data['current'];
+            $summary = $data['executive_summary'];
+
+            fputcsv($handle, ['CXTS Executive Report']);
+            fputcsv($handle, ['Generated At', now()->format('Y-m-d H:i:s')]);
+            fputcsv($handle, ['Period From', $current['period']['date_from']]);
+            fputcsv($handle, ['Period To', $current['period']['date_to']]);
+            fputcsv($handle, ['Headline', $summary['headline']]);
+            fputcsv($handle, ['Tone', $summary['tone']]);
+            fputcsv($handle, ['Note', $summary['note']]);
+
+            $writeSection('Snapshot Metrics');
+            fputcsv($handle, ['Metric', 'Value']);
+            fputcsv($handle, ['Total Tickets', $current['summary']['total_tickets']]);
+            fputcsv($handle, ['Completion Rate', $current['derived']['completion_rate'] . '%']);
+            fputcsv($handle, ['Response SLA', $current['sla']['response']['compliance_rate'] . '%']);
+            fputcsv($handle, ['Resolution SLA', $current['sla']['resolution']['compliance_rate'] . '%']);
+            fputcsv($handle, ['Engineer Effectiveness', $current['engineer']['avg_effectiveness_score']]);
+            fputcsv($handle, ['Abnormal Inspections', $current['inspection']['abnormal_inspections']]);
+
+            $writeSection('Highlights');
+            fputcsv($handle, ['Title', 'Tone', 'Message']);
+            foreach ($summary['highlights'] as $highlight) {
+                fputcsv($handle, [$highlight['title'], $highlight['tone'], $highlight['message']]);
+            }
+
+            $writeSection('Recommended Action Plan');
+            fputcsv($handle, ['Priority', 'Owner', 'Target', 'Title', 'Message']);
+            foreach ($data['action_plan'] ?? [] as $action) {
+                fputcsv($handle, [$action['priority'], $action['owner'], $action['timeframe'], $action['title'], $action['message']]);
+            }
+
+            $writeSection('Top Risks');
+            fputcsv($handle, ['Severity', 'Title', 'Message']);
+            foreach ($data['top_risks'] ?? [] as $risk) {
+                fputcsv($handle, [$risk['severity'], $risk['title'], $risk['message']]);
+            }
+
+            $writeSection('Top Improvement Areas');
+            fputcsv($handle, ['Priority', 'Title', 'Message']);
+            foreach ($data['top_improvement_areas'] ?? [] as $area) {
+                fputcsv($handle, [$area['priority'], $area['title'], $area['message']]);
+            }
+
+            fclose($handle);
+        }, $filename, ['Content-Type' => 'text/csv']);
     }
 
     public function myPerformance(Request $request): View

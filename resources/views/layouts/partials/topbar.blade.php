@@ -66,7 +66,7 @@
                               </div>
                               <div data-simplebar style="max-height: 250px;">
                                    @forelse ($topbarNotifications as $notification)
-                                        <a href="{{ $notification['url'] }}" class="dropdown-item p-2 border-bottom text-wrap">
+                                        <a href="{{ $notification['open_url'] }}" class="dropdown-item p-2 border-bottom text-wrap {{ $notification['is_read'] ? '' : 'bg-light bg-opacity-50' }}">
                                              <div class="d-flex">
                                                   <div class="flex-shrink-0">
                                                        <div class="avatar-sm me-2">
@@ -76,9 +76,21 @@
                                                        </div>
                                                   </div>
                                              <div class="flex-grow-1">
-                                                  <p class="mb-0 fw-medium">{{ $notification['title'] }}</p>
+                                                  <div class="d-flex align-items-center gap-1">
+                                                       @unless ($notification['is_read'])
+                                                            <span class="badge bg-danger rounded-pill" style="width: 8px; height: 8px; padding: 0;"></span>
+                                                       @endunless
+                                                       <p class="mb-0 fw-medium">{{ $notification['title'] }}</p>
+                                                  </div>
                                                   <p class="mb-0 text-wrap text-muted">{{ $notification['message'] }}</p>
-                                                  <small class="text-muted">{{ $notification['occurred_at']->diffForHumans() }}</small>
+                                                  <small class="text-muted">
+                                                       {{ $notification['occurred_at']->diffForHumans() }}
+                                                       @if ($notification['is_acknowledged'])
+                                                            · acknowledged
+                                                       @elseif ($notification['is_read'])
+                                                            · read
+                                                       @endif
+                                                  </small>
                                              </div>
                                              </div>
                                         </a>
@@ -86,8 +98,14 @@
                                         <div class="p-3 text-center text-muted small">No notifications yet.</div>
                                    @endforelse
                               </div>
-                              <div class="text-center p-2">
-                                   <a href="{{ route('notifications.center') }}" class="btn btn-primary btn-sm">View All Notification <i
+                              <div class="d-flex justify-content-center gap-2 p-2">
+                                   @if ($topbarNotificationCount > 0)
+                                        <form method="POST" action="{{ route('notifications.read-all') }}">
+                                             @csrf
+                                             <button type="submit" class="btn btn-outline-secondary btn-sm">Mark Read</button>
+                                        </form>
+                                   @endif
+                                   <a href="{{ route('notifications.center') }}" class="btn btn-primary btn-sm">View All <i
                                              class="bx bx-right-arrow-alt ms-1"></i></a>
                               </div>
                          </div>

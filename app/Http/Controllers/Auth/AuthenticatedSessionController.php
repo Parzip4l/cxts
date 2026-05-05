@@ -80,12 +80,31 @@ class AuthenticatedSessionController extends Controller
     {
         $intendedUrl = $request->session()->pull('url.intended');
 
-        if ($this->shouldIgnoreIntendedUrl($intendedUrl, $request)) {
-            return RouteServiceProvider::HOME;
+        if (is_string($intendedUrl) && $intendedUrl !== '') {
+            if ($this->shouldIgnoreIntendedUrl($intendedUrl, $request)) {
+                return $this->roleLandingPath($request);
+            }
+
+            return $intendedUrl;
         }
 
-        if (is_string($intendedUrl) && $intendedUrl !== '') {
-            return $intendedUrl;
+        return $this->roleLandingPath($request);
+    }
+
+    private function roleLandingPath(Request $request): string
+    {
+        $user = $request->user();
+
+        if ($user?->role === 'requester') {
+            return route('tickets.index', absolute: false);
+        }
+
+        if ($user?->role === 'engineer') {
+            return route('engineer-tasks.index', absolute: false);
+        }
+
+        if ($user?->role === 'inspection_officer') {
+            return route('inspections.index', absolute: false);
         }
 
         return RouteServiceProvider::HOME;

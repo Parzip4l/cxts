@@ -9,6 +9,7 @@ use App\Http\Resources\TicketWorklogResource;
 use App\Models\Ticket;
 use App\Modules\MasterData\EngineerSchedules\EngineerScheduleService;
 use App\Modules\Tickets\EngineerTasks\EngineerTaskService;
+use App\Modules\Tickets\EngineerTasks\Requests\CompleteTaskRequest;
 use App\Modules\Tickets\EngineerTasks\Requests\StoreTaskWorklogRequest;
 use App\Modules\Tickets\EngineerTasks\Requests\TransitionTaskRequest;
 use App\Services\Tickets\EngineerRecommendationService;
@@ -68,6 +69,8 @@ class EngineerTaskController extends Controller
             'asset.category:id,name',
             'assetLocation:id,name',
             'assignedEngineer:id,name',
+            'attachments',
+            'attachments.uploadedBy:id,name',
             'worklogs.user:id,name',
             'activities.actor:id,name',
             'activities.oldStatus:id,name',
@@ -99,9 +102,19 @@ class EngineerTaskController extends Controller
         return new TicketResource($this->engineerTaskService->resume($ticket, $request->user(), $request->validated('notes')));
     }
 
-    public function complete(TransitionTaskRequest $request, Ticket $ticket): TicketResource
+    public function complete(CompleteTaskRequest $request, Ticket $ticket): TicketResource
     {
-        return new TicketResource($this->engineerTaskService->complete($ticket, $request->user(), $request->validated('notes')));
+        return new TicketResource($this->engineerTaskService->complete(
+            $ticket,
+            $request->user(),
+            $request->validated('notes'),
+            $request->file('completion_evidences', []),
+        ));
+    }
+
+    public function pendingCustomer(TransitionTaskRequest $request, Ticket $ticket): TicketResource
+    {
+        return new TicketResource($this->engineerTaskService->pendingCustomer($ticket, $request->user(), $request->validated('notes')));
     }
 
     public function storeWorklog(StoreTaskWorklogRequest $request, Ticket $ticket): JsonResponse

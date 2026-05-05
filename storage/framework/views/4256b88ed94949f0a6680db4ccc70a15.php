@@ -38,7 +38,10 @@
                                 <h4 class="fw-bold text-dark mb-1">Submit Ticket</h4>
                                 <p class="text-muted mb-0">Laporkan masalah tanpa login. Cukup isi inti masalah dan pilih konteks yang paling relevan.</p>
                             </div>
-                            <a href="<?php echo e(route('login')); ?>" class="btn btn-outline-dark">Staff Login</a>
+                            <div class="d-flex flex-wrap gap-2 justify-content-end">
+                                <a href="<?php echo e(route('public.tickets.track')); ?>" class="btn btn-outline-primary">Track Ticket</a>
+                                <a href="<?php echo e(route('login')); ?>" class="btn btn-outline-dark">Staff Login</a>
+                            </div>
                         </div>
 
                         <?php if(session('success')): ?>
@@ -567,7 +570,10 @@ unset($__errorArgs, $__bag); ?>
                                         <button type="button" class="btn btn-dark" data-step-action="next">Continue</button>
                                         <button type="submit" class="btn btn-success d-none" data-step-action="submit">Submit Ticket</button>
                                     </div>
-                                    <a href="<?php echo e(route('public.inspections.create')); ?>" class="btn btn-outline-secondary">Submit Inspection Result</a>
+                                    <div class="d-flex flex-wrap gap-2">
+                                        <a href="<?php echo e(route('public.tickets.track')); ?>" class="btn btn-outline-primary">Track Ticket</a>
+                                        <a href="<?php echo e(route('public.inspections.create')); ?>" class="btn btn-outline-secondary">Submit Inspection Result</a>
+                                    </div>
                                 </div>
                             </div>
                         </form>

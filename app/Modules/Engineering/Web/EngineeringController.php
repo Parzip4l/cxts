@@ -5,10 +5,12 @@ namespace App\Modules\Engineering\Web;
 use App\Http\Controllers\Controller;
 use App\Models\EngineerSchedule;
 use App\Models\Ticket;
+use App\Models\TicketStatus;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Contracts\View\View;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
@@ -96,6 +98,7 @@ class EngineeringController extends Controller
         });
 
         $cards = $this->filterByAvailability($cards, $availabilityFilter);
+        $canUseDispatchControl = $this->canUseDispatchControl($user);
 
         $summary = [
             'total_engineers' => $cards->count(),
@@ -120,6 +123,10 @@ class EngineeringController extends Controller
             ->sortByDesc('active_ticket_count')
             ->values();
 
+        $dispatchControl = $canUseDispatchControl
+            ? $this->dispatchControl($user, $cards)
+            : null;
+
         $cards = $this->paginateCards($cards, $perPage, (int) $request->integer('page', 1), $request);
 
         return view('modules.engineering.index', [
@@ -128,8 +135,128 @@ class EngineeringController extends Controller
             'availabilityFilter' => $availabilityFilter,
             'summary' => $summary,
             'departmentSummary' => $departmentSummary,
+            'dispatchControl' => $dispatchControl,
             'cards' => $cards,
         ]);
+    }
+
+    private function canUseDispatchControl(?User $user): bool
+    {
+        return $user?->hasAnyPermission([
+            'ticket.assign_all',
+            'ticket.assign_department',
+            'workforce.manage',
+        ]) ?? false;
+    }
+
+    private function dispatchControl(User $user, Collection $cards): array
+    {
+        $statusIds = TicketStatus::query()
+            ->whereIn('code', ['PENDING_CUSTOMER', 'COMPLETED', 'CANCELLED'])
+            ->pluck('id', 'code');
+
+        $readyTickets = $this->dispatchTicketQuery($user)
+            ->whereNull('assigned_engineer_id')
+            ->whereNotNull('assignment_ready_at')
+            ->orderByDesc('assignment_ready_at')
+            ->limit(8)
+            ->get();
+
+        $pendingCustomerTickets = $this->dispatchTicketQuery($user)
+            ->when($statusIds->has('PENDING_CUSTOMER'), fn ($query) => $query->where('ticket_status_id', $statusIds['PENDING_CUSTOMER']))
+            ->when(! $statusIds->has('PENDING_CUSTOMER'), fn ($query) => $query->whereRaw('1 = 0'))
+            ->orderByDesc('last_status_changed_at')
+            ->limit(8)
+            ->get();
+
+        $completedWaitingCloseTickets = $this->dispatchTicketQuery($user)
+            ->whereNull('closed_at')
+            ->where(function ($query) use ($statusIds): void {
+                $query->whereNotNull('completed_at');
+
+                if ($statusIds->has('COMPLETED')) {
+                    $query->orWhere('ticket_status_id', $statusIds['COMPLETED']);
+                }
+            })
+            ->orderByDesc('completed_at')
+            ->limit(8)
+            ->get();
+
+        $availableEngineers = $cards
+            ->filter(fn (array $card) => $card['availability_label'] === 'Available')
+            ->sortBy(fn (array $card) => sprintf(
+                '%03d-%03d-%s',
+                $card['active_ticket_count'],
+                $card['in_progress_ticket_count'],
+                $card['engineer']->name
+            ))
+            ->take(6)
+            ->values();
+
+        $busyEngineers = $cards
+            ->filter(fn (array $card) => in_array($card['availability_label'], ['Busy', 'Available'], true) && $card['active_ticket_count'] >= 3)
+            ->sortByDesc('active_ticket_count')
+            ->take(6)
+            ->values();
+
+        return [
+            'summary' => [
+                'ready_assignment' => $this->dispatchTicketQuery($user)
+                    ->whereNull('assigned_engineer_id')
+                    ->whereNotNull('assignment_ready_at')
+                    ->count(),
+                'pending_customer' => $statusIds->has('PENDING_CUSTOMER')
+                    ? $this->dispatchTicketQuery($user)->where('ticket_status_id', $statusIds['PENDING_CUSTOMER'])->count()
+                    : 0,
+                'completed_waiting_close' => $this->dispatchTicketQuery($user)
+                    ->whereNull('closed_at')
+                    ->where(function ($query) use ($statusIds): void {
+                        $query->whereNotNull('completed_at');
+
+                        if ($statusIds->has('COMPLETED')) {
+                            $query->orWhere('ticket_status_id', $statusIds['COMPLETED']);
+                        }
+                    })
+                    ->count(),
+                'high_load_engineers' => $busyEngineers->count(),
+            ],
+            'ready_tickets' => $readyTickets,
+            'pending_customer_tickets' => $pendingCustomerTickets,
+            'completed_waiting_close_tickets' => $completedWaitingCloseTickets,
+            'available_engineers' => $availableEngineers,
+            'busy_engineers' => $busyEngineers,
+            'links' => [
+                'ready_queue' => route('tickets.index', ['assignment_queue' => 'ready']),
+                'pending_customer_queue' => $statusIds->has('PENDING_CUSTOMER')
+                    ? route('tickets.index', ['ticket_status_id' => $statusIds['PENDING_CUSTOMER']])
+                    : route('tickets.index'),
+                'completed_queue' => $statusIds->has('COMPLETED')
+                    ? route('tickets.index', ['ticket_status_id' => $statusIds['COMPLETED']])
+                    : route('tickets.index'),
+            ],
+        ];
+    }
+
+    private function dispatchTicketQuery(User $user): Builder
+    {
+        $query = Ticket::query()
+            ->with([
+                'status:id,name,code',
+                'priority:id,name',
+                'category:id,name',
+                'requesterDepartment:id,name',
+                'assignedEngineer:id,name',
+            ]);
+
+        if ($user->hasPermission('ticket.assign_all') || $user->hasPermission('workforce.manage')) {
+            return $query;
+        }
+
+        if ($user->hasPermission('ticket.assign_department') && $user->department_id !== null) {
+            return $query->where('requester_department_id', $user->department_id);
+        }
+
+        return $query->whereRaw('1 = 0');
     }
 
     private function filterByAvailability(Collection $cards, string $availabilityFilter): Collection

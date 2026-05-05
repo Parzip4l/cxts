@@ -19,6 +19,10 @@ class TicketDecisionRequest extends FormRequest
             str_ends_with($routeName, '.approve') => 'approve',
             str_ends_with($routeName, '.reject') => 'reject',
             str_ends_with($routeName, '.mark-ready') => 'mark_ready',
+            str_ends_with($routeName, '.pending-customer') => 'pending_customer',
+            str_ends_with($routeName, '.close') => 'close',
+            str_ends_with($routeName, '.reopen') => 'reopen',
+            str_ends_with($routeName, '.cancel') => 'cancel',
             default => null,
         };
 
@@ -40,6 +44,10 @@ class TicketDecisionRequest extends FormRequest
             str_ends_with($routeName, '.approve') => 'approve',
             str_ends_with($routeName, '.reject') => 'reject',
             str_ends_with($routeName, '.mark-ready') => 'markReady',
+            str_ends_with($routeName, '.pending-customer') => 'pendingCustomer',
+            str_ends_with($routeName, '.close') => 'close',
+            str_ends_with($routeName, '.reopen') => 'reopen',
+            str_ends_with($routeName, '.cancel') => 'cancel',
             default => null,
         };
 
@@ -52,7 +60,7 @@ class TicketDecisionRequest extends FormRequest
     {
         return [
             'decision' => ['nullable', 'string'],
-            'notes' => ['nullable', 'string', 'required_if:decision,reject,mark_ready'],
+            'notes' => ['nullable', 'string', 'required_if:decision,reject,mark_ready,pending_customer,reopen,cancel'],
         ];
     }
 }

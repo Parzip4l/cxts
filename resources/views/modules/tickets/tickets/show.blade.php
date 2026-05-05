@@ -8,7 +8,9 @@
     $ticketAgeHours = $ticket->created_at ? $ticket->created_at->diffInHours(now()) : null;
     $responseRiskLabel = null;
     $currentUser = auth()->user();
+    $statusCode = strtoupper((string) ($ticket->status?->code ?? ''));
     $approvalActivities = $ticket->activities->filter(fn ($activity) => in_array($activity->activity_type, ['ticket_approved', 'ticket_rejected', 'ticket_ready_for_assignment'], true))->values();
+    $lifecycleActivities = $ticket->activities->filter(fn ($activity) => in_array($activity->activity_type, ['ticket_pending_customer', 'ticket_closed', 'ticket_reopened', 'ticket_cancelled'], true))->values();
     $strategyLabels = \App\Models\TicketCategory::approverStrategies();
     $roleLabel = fn ($roleCode) => \App\Models\TicketCategory::approverRoleLabel($roleCode) ?? '-';
     $approvalPolicyLabel = function ($value, $inheritLabel = 'Follow Parent') {
@@ -73,10 +75,10 @@
     $ticketStatusBadgeClass = function ($statusCode) {
         return match (strtolower((string) $statusCode)) {
             'new', 'open', 'assigned' => 'bg-primary-subtle text-primary',
-            'pending_approval', 'on_hold' => 'bg-warning-subtle text-warning',
+            'pending_approval', 'on_hold', 'pending_customer' => 'bg-warning-subtle text-warning',
             'in_progress' => 'bg-info-subtle text-info',
             'completed', 'closed' => 'bg-success-subtle text-success',
-            'rejected' => 'bg-danger-subtle text-danger',
+            'rejected', 'cancelled' => 'bg-danger-subtle text-danger',
             default => 'bg-secondary-subtle text-secondary',
         };
     };
@@ -110,6 +112,20 @@
             $responseRiskBadgeClass = 'bg-info-subtle text-info';
         }
     }
+    $canMarkPendingCustomer = $currentUser?->can('pendingCustomer', $ticket)
+        && $ticket->started_at !== null
+        && ! $ticket->isPendingCustomer()
+        && ! $ticket->isTerminalLifecycle();
+    $canCloseTicket = $currentUser?->can('close', $ticket)
+        && ($ticket->completed_at !== null || $statusCode === 'COMPLETED')
+        && ! in_array($statusCode, ['CLOSED', 'CANCELLED'], true)
+        && $ticket->closed_at === null;
+    $canReopenTicket = $currentUser?->can('reopen', $ticket)
+        && ($ticket->completed_at !== null || $ticket->closed_at !== null || in_array($statusCode, ['COMPLETED', 'CLOSED', 'CANCELLED'], true));
+    $canCancelTicket = $currentUser?->can('cancel', $ticket)
+        && ! in_array($statusCode, ['REJECTED', 'COMPLETED', 'CLOSED', 'CANCELLED'], true)
+        && $ticket->completed_at === null
+        && $ticket->closed_at === null;
     $engineerCustomProperties = function ($option) {
         return [
             'department_name' => $option->department_name ?? 'No department',
@@ -571,9 +587,109 @@
                 </div>
             </div>
         </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Lifecycle History</h5>
+            </div>
+            <div class="card-body">
+                @forelse ($lifecycleActivities as $lifecycleActivity)
+                    @php
+                        $lifecycleLabel = match ($lifecycleActivity->activity_type) {
+                            'ticket_pending_customer' => 'Pending Customer',
+                            'ticket_closed' => 'Closed',
+                            'ticket_reopened' => 'Reopened',
+                            'ticket_cancelled' => 'Cancelled',
+                            default => str($lifecycleActivity->activity_type)->replace('_', ' ')->title(),
+                        };
+                    @endphp
+                    <div class="border-bottom pb-3 mb-3">
+                        <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                            <div>
+                                <div class="fw-semibold">{{ $lifecycleLabel }}</div>
+                                <div class="small text-muted">
+                                    {{ optional($lifecycleActivity->created_at)->format('Y-m-d H:i') }}
+                                    by {{ $lifecycleActivity->actor?->name ?? 'System' }}
+                                </div>
+                            </div>
+                            <span class="badge {{ in_array($lifecycleActivity->activity_type, ['ticket_closed'], true) ? 'bg-success-subtle text-success' : (in_array($lifecycleActivity->activity_type, ['ticket_cancelled'], true) ? 'bg-danger-subtle text-danger' : 'bg-warning-subtle text-warning') }}">
+                                {{ $lifecycleLabel }}
+                            </span>
+                        </div>
+                        <div class="small text-muted mt-2">
+                            {{ data_get($lifecycleActivity->metadata, 'notes') ?: 'No notes provided.' }}
+                        </div>
+                    </div>
+                @empty
+                    <div class="text-muted">Belum ada update lifecycle khusus pada ticket ini.</div>
+                @endforelse
+            </div>
+        </div>
     </div>
 
     <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Ticket Lifecycle</h5>
+            </div>
+            <div class="card-body">
+                <div class="border rounded p-3 mb-3 bg-light-subtle">
+                    <div class="small text-muted mb-1">Current Flow Position</div>
+                    <div class="fw-semibold">{{ $ticket->status?->name ?? '-' }}</div>
+                    <div class="small text-muted mt-1">
+                        @if ($ticket->isPendingCustomer())
+                            Ticket sedang menunggu respon atau konfirmasi dari requester/customer sebelum engineer melanjutkan pekerjaan.
+                        @elseif ($ticket->isCompleted())
+                            Engineer sudah menyelesaikan pekerjaan. Langkah berikutnya biasanya close atau reopen bila hasil belum diterima.
+                        @elseif ($ticket->isCancelled())
+                            Ticket ini sudah dibatalkan dan tercatat sebagai terminal state.
+                        @elseif ($ticket->isClosed())
+                            Ticket ini sudah ditutup secara operasional.
+                        @else
+                            Gunakan aksi lifecycle untuk memindahkan ticket ke status operasional yang lebih tepat.
+                        @endif
+                    </div>
+                </div>
+
+                @if ($canMarkPendingCustomer || $canCloseTicket || $canReopenTicket || $canCancelTicket)
+                    <form method="POST" action="{{ route('tickets.close', $ticket) }}" class="row g-3">
+                        @csrf
+                        <div class="col-12">
+                            <label for="lifecycle_notes" class="form-label">Lifecycle Notes</label>
+                            <textarea id="lifecycle_notes" name="notes" rows="3" class="form-control" placeholder="Catatan untuk pending customer, close, reopen, atau cancel.">{{ old('notes') }}</textarea>
+                            <div class="form-text">Pending customer, reopen, dan cancel sebaiknya selalu menyertakan catatan agar handoff tetap jelas.</div>
+                        </div>
+                        <div class="col-12 d-grid gap-2">
+                            @if ($canMarkPendingCustomer)
+                                <button type="submit" class="btn btn-outline-warning" formaction="{{ route('tickets.pending-customer', $ticket) }}">
+                                    Mark Pending Customer
+                                </button>
+                            @endif
+                            @if ($canCloseTicket)
+                                <button type="submit" class="btn btn-success" formaction="{{ route('tickets.close', $ticket) }}">
+                                    Close Ticket
+                                </button>
+                            @endif
+                            @if ($canReopenTicket)
+                                <button type="submit" class="btn btn-outline-primary" formaction="{{ route('tickets.reopen', $ticket) }}">
+                                    Reopen Ticket
+                                </button>
+                            @endif
+                            @if ($canCancelTicket)
+                                <button type="submit" class="btn btn-outline-danger" formaction="{{ route('tickets.cancel', $ticket) }}">
+                                    Cancel Ticket
+                                </button>
+                            @endif
+                        </div>
+                    </form>
+                @else
+                    <div class="alert alert-light border mb-0">
+                        Tidak ada aksi lifecycle tambahan yang tersedia untuk role dan status ticket saat ini.
+                    </div>
+                @endif
+            </div>
+        </div>
+
         <div class="card">
             <div class="card-header">
                 <h5 class="card-title mb-0">Assign Engineer</h5>

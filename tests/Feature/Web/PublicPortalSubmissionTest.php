@@ -8,8 +8,11 @@ use App\Models\Ticket;
 use App\Models\TicketCategory;
 use App\Models\TicketPriority;
 use App\Models\TicketStatus;
+use App\Models\User;
+use App\Notifications\PublicTicketSubmittedNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Notification;
 use Tests\TestCase;
 
 class PublicPortalSubmissionTest extends TestCase
@@ -18,6 +21,8 @@ class PublicPortalSubmissionTest extends TestCase
 
     public function test_guest_can_submit_public_ticket(): void
     {
+        Notification::fake();
+
         $department = Department::query()->create([
             'code' => 'DEP-PUBLIC',
             'name' => 'Public Department',
@@ -58,7 +63,10 @@ class PublicPortalSubmissionTest extends TestCase
             'ticket_priority_id' => $priorityId,
             'impact' => 'medium',
             'urgency' => 'medium',
-        ])->assertRedirect(route('public.tickets.create'));
+        ])
+            ->assertRedirect(route('public.tickets.track'))
+            ->assertSessionHas('ticket_number')
+            ->assertSessionHas('requester_email', 'public.user@example.com');
 
         $this->assertDatabaseHas('tickets', [
             'title' => 'Internet down in meeting room',
@@ -68,6 +76,118 @@ class PublicPortalSubmissionTest extends TestCase
         $this->assertDatabaseHas('users', [
             'email' => 'public.user@example.com',
         ]);
+
+        $requester = User::query()->where('email', 'public.user@example.com')->firstOrFail();
+        Notification::assertSentTo($requester, PublicTicketSubmittedNotification::class);
+    }
+
+    public function test_guest_can_track_public_ticket_with_ticket_number_and_email(): void
+    {
+        Notification::fake();
+
+        $department = Department::query()->create([
+            'code' => 'DEP-TRACK',
+            'name' => 'Tracking Department',
+            'is_active' => true,
+        ]);
+
+        $category = TicketCategory::query()->create([
+            'code' => 'REQ',
+            'name' => 'Request',
+            'is_active' => true,
+        ]);
+
+        TicketPriority::query()->create([
+            'code' => 'P3',
+            'name' => 'Medium',
+            'level' => 3,
+            'response_target_minutes' => 60,
+            'resolution_target_minutes' => 480,
+            'is_active' => true,
+        ]);
+
+        TicketStatus::query()->create([
+            'code' => 'NEW',
+            'name' => 'New',
+            'is_open' => true,
+            'is_active' => true,
+        ]);
+
+        $this->post(route('public.tickets.store'), [
+            'requester_name' => 'Track User',
+            'requester_email' => 'track.user@example.com',
+            'requester_department_id' => $department->id,
+            'title' => 'AC room too warm',
+            'description' => 'Room temperature is above normal.',
+            'ticket_category_id' => $category->id,
+            'impact' => 'medium',
+            'urgency' => 'medium',
+        ]);
+
+        $ticket = Ticket::query()->where('title', 'AC room too warm')->firstOrFail();
+
+        $this->post(route('public.tickets.lookup'), [
+            'ticket_number' => $ticket->ticket_number,
+            'requester_email' => 'track.user@example.com',
+        ])
+            ->assertOk()
+            ->assertSee($ticket->ticket_number)
+            ->assertSee('AC room too warm')
+            ->assertSee('New');
+    }
+
+    public function test_guest_cannot_track_public_ticket_with_wrong_email(): void
+    {
+        Notification::fake();
+
+        $department = Department::query()->create([
+            'code' => 'DEP-TRACK-INVALID',
+            'name' => 'Tracking Invalid Department',
+            'is_active' => true,
+        ]);
+
+        $category = TicketCategory::query()->create([
+            'code' => 'INC-TRACK',
+            'name' => 'Incident Tracking',
+            'is_active' => true,
+        ]);
+
+        TicketPriority::query()->create([
+            'code' => 'P3',
+            'name' => 'Medium',
+            'level' => 3,
+            'response_target_minutes' => 60,
+            'resolution_target_minutes' => 480,
+            'is_active' => true,
+        ]);
+
+        TicketStatus::query()->create([
+            'code' => 'NEW',
+            'name' => 'New',
+            'is_open' => true,
+            'is_active' => true,
+        ]);
+
+        $this->post(route('public.tickets.store'), [
+            'requester_name' => 'Secure Track User',
+            'requester_email' => 'secure.track@example.com',
+            'requester_department_id' => $department->id,
+            'title' => 'Door access issue',
+            'description' => 'Door access card cannot open the room.',
+            'ticket_category_id' => $category->id,
+            'impact' => 'medium',
+            'urgency' => 'medium',
+        ]);
+
+        $ticket = Ticket::query()->where('title', 'Door access issue')->firstOrFail();
+
+        $this->from(route('public.tickets.track'))
+            ->post(route('public.tickets.lookup'), [
+                'ticket_number' => $ticket->ticket_number,
+                'requester_email' => 'other.user@example.com',
+            ])
+            ->assertRedirect(route('public.tickets.track'))
+            ->assertSessionHasErrors(['ticket_number']);
     }
 
     public function test_guest_can_submit_public_inspection(): void

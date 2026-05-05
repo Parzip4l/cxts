@@ -10,8 +10,25 @@
                 <h5 class="mb-1">Recent Notifications</h5>
                 <p class="text-muted mb-0 small">Update operasional terbaru yang relevan dengan akun Anda.</p>
             </div>
-            <span class="badge bg-light text-dark border">{{ $notifications->count() }} items</span>
+            <div class="d-flex align-items-center gap-2">
+                <span class="badge bg-danger-subtle text-danger border border-danger-subtle">{{ $unreadCount }} unread</span>
+                <span class="badge bg-light text-dark border">{{ $notifications->count() }} items</span>
+                @if ($unreadCount > 0)
+                    <form method="POST" action="{{ route('notifications.read-all') }}">
+                        @csrf
+                        <button type="submit" class="btn btn-sm btn-outline-secondary">Mark All Read</button>
+                    </form>
+                @endif
+            </div>
         </div>
+
+        @if (session('success'))
+            <div class="alert alert-success">{{ session('success') }}</div>
+        @endif
+
+        @if (session('error'))
+            <div class="alert alert-danger">{{ session('error') }}</div>
+        @endif
 
         <div class="row g-3">
             <div class="col-md-4">
@@ -23,16 +40,16 @@
             </div>
             <div class="col-md-4">
                 <div class="rounded-3 border bg-light-subtle p-3 h-100">
-                    <div class="text-muted small mb-1">Assignments</div>
-                    <div class="fs-4 fw-semibold">{{ $notifications->where('type', 'assignment')->count() }}</div>
-                    <div class="small text-muted">Task dan ticket yang sudah masuk ke engineer.</div>
+                    <div class="text-muted small mb-1">Unread</div>
+                    <div class="fs-4 fw-semibold">{{ $notifications->where('is_read', false)->count() }}</div>
+                    <div class="small text-muted">Update yang belum dibuka atau ditandai read.</div>
                 </div>
             </div>
             <div class="col-md-4">
                 <div class="rounded-3 border bg-light-subtle p-3 h-100">
-                    <div class="text-muted small mb-1">Latest Update</div>
-                    <div class="fs-6 fw-semibold">{{ optional($notifications->first()['occurred_at'] ?? null)->diffForHumans() ?? 'No recent update' }}</div>
-                    <div class="small text-muted">Konteks update paling baru di akun ini.</div>
+                    <div class="text-muted small mb-1">Acknowledged</div>
+                    <div class="fs-4 fw-semibold">{{ $notifications->where('is_acknowledged', true)->count() }}</div>
+                    <div class="small text-muted">Item yang sudah dikonfirmasi user.</div>
                 </div>
             </div>
         </div>
@@ -43,30 +60,60 @@
     <div class="card-body">
         <div class="d-flex flex-column gap-3">
             @forelse ($notifications as $notification)
-                <a href="{{ $notification['url'] }}" class="text-decoration-none">
-                    <div class="border rounded-3 p-3 notification-item-hover">
-                        <div class="d-flex justify-content-between align-items-start gap-3">
-                            <div class="d-flex align-items-start gap-3">
-                                <div class="avatar-sm">
-                                    <span class="avatar-title rounded-circle bg-{{ $notification['badge_class'] }}-subtle text-{{ $notification['badge_class'] }}">
-                                        <iconify-icon icon="{{ $notification['icon'] }}"></iconify-icon>
-                                    </span>
-                                </div>
-                                <div>
-                                    <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
-                                        <h6 class="mb-0 text-dark">{{ $notification['title'] }}</h6>
-                                        <span class="badge bg-{{ $notification['badge_class'] }}-subtle text-{{ $notification['badge_class'] }}">
-                                            {{ ucfirst(str_replace('_', ' ', $notification['type'])) }}
-                                        </span>
-                                    </div>
-                                    <p class="text-muted mb-1">{{ $notification['message'] }}</p>
-                                    <small class="text-muted">{{ $notification['occurred_at']->format('d M Y H:i') }} · {{ $notification['occurred_at']->diffForHumans() }}</small>
-                                </div>
+                <div class="border rounded-3 p-3 notification-item-hover {{ $notification['is_read'] ? '' : 'bg-light-subtle' }}">
+                    <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                        <div class="d-flex align-items-start gap-3">
+                            <div class="avatar-sm">
+                                <span class="avatar-title rounded-circle bg-{{ $notification['badge_class'] }}-subtle text-{{ $notification['badge_class'] }}">
+                                    <iconify-icon icon="{{ $notification['icon'] }}"></iconify-icon>
+                                </span>
                             </div>
-                            <iconify-icon icon="solar:alt-arrow-right-outline" class="fs-20 text-muted"></iconify-icon>
+                            <div>
+                                <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+                                    @unless ($notification['is_read'])
+                                        <span class="badge bg-danger rounded-pill">Unread</span>
+                                    @endunless
+                                    <h6 class="mb-0 text-dark">{{ $notification['title'] }}</h6>
+                                    <span class="badge bg-{{ $notification['badge_class'] }}-subtle text-{{ $notification['badge_class'] }}">
+                                        {{ ucfirst(str_replace('_', ' ', $notification['type'])) }}
+                                    </span>
+                                    @if ($notification['is_acknowledged'])
+                                        <span class="badge bg-success-subtle text-success">Acknowledged</span>
+                                    @elseif ($notification['is_read'])
+                                        <span class="badge bg-secondary-subtle text-secondary">Read</span>
+                                    @endif
+                                </div>
+                                <p class="text-muted mb-1">{{ $notification['message'] }}</p>
+                                <small class="text-muted">
+                                    {{ $notification['occurred_at']->format('d M Y H:i') }} · {{ $notification['occurred_at']->diffForHumans() }}
+                                    @if ($notification['read_at'])
+                                        · read {{ $notification['read_at']->diffForHumans() }}
+                                    @endif
+                                    @if ($notification['acknowledged_at'])
+                                        · acknowledged {{ $notification['acknowledged_at']->diffForHumans() }}
+                                    @endif
+                                </small>
+                            </div>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2">
+                            <a href="{{ $notification['open_url'] }}" class="btn btn-sm btn-primary">
+                                Open
+                            </a>
+                            @unless ($notification['is_read'])
+                                <form method="POST" action="{{ route('notifications.read', $notification['key']) }}">
+                                    @csrf
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary">Mark Read</button>
+                                </form>
+                            @endunless
+                            @unless ($notification['is_acknowledged'])
+                                <form method="POST" action="{{ route('notifications.acknowledge', $notification['key']) }}">
+                                    @csrf
+                                    <button type="submit" class="btn btn-sm btn-outline-success">Acknowledge</button>
+                                </form>
+                            @endunless
                         </div>
                     </div>
-                </a>
+                </div>
             @empty
                 <div class="text-center py-5">
                     <div class="avatar-lg mx-auto mb-3">

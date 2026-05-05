@@ -1,6 +1,20 @@
 <?php $__env->startSection('content'); ?>
 <?php echo $__env->make('layouts.partials.page-title', ['title' => 'Operations', 'subtitle' => 'Engineering'], \Illuminate\Support\Arr::except(get_defined_vars(), ['__data', '__path']))->render(); ?>
 
+<?php
+    $dispatchControl = $dispatchControl ?? null;
+    $ticketBadgeClass = function ($statusCode) {
+        return match (strtolower((string) $statusCode)) {
+            'new', 'assigned' => 'bg-primary-subtle text-primary',
+            'in_progress' => 'bg-info-subtle text-info',
+            'pending_customer', 'on_hold', 'pending_approval' => 'bg-warning-subtle text-warning',
+            'completed', 'closed' => 'bg-success-subtle text-success',
+            'rejected', 'cancelled' => 'bg-danger-subtle text-danger',
+            default => 'bg-secondary-subtle text-secondary',
+        };
+    };
+?>
+
 <div class="card border-0 shadow-sm mb-4">
     <div class="card-body">
         <form method="GET" action="<?php echo e(route('engineering.index')); ?>" class="row g-3 align-items-end">
@@ -72,6 +86,190 @@
         </div>
     </div>
 </div>
+
+<?php if($dispatchControl): ?>
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-transparent border-0 pt-4 pb-0">
+            <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                <div>
+                    <h5 class="mb-1">Dispatch Control Tower</h5>
+                    <p class="text-muted mb-0 small">Queue assignment, follow-up, dan closure yang perlu dikawal shift ini.</p>
+                </div>
+                <div class="d-flex flex-wrap gap-2">
+                    <a href="<?php echo e($dispatchControl['links']['ready_queue']); ?>" class="btn btn-outline-primary btn-sm text-nowrap">
+                        <iconify-icon icon="solar:plain-2-outline" class="me-1"></iconify-icon>
+                        Ready Queue
+                    </a>
+                    <a href="<?php echo e($dispatchControl['links']['pending_customer_queue']); ?>" class="btn btn-outline-warning btn-sm text-nowrap">
+                        <iconify-icon icon="solar:user-block-outline" class="me-1"></iconify-icon>
+                        Pending Customer
+                    </a>
+                    <a href="<?php echo e($dispatchControl['links']['completed_queue']); ?>" class="btn btn-outline-success btn-sm text-nowrap">
+                        <iconify-icon icon="solar:check-read-outline" class="me-1"></iconify-icon>
+                        Awaiting Close
+                    </a>
+                </div>
+            </div>
+        </div>
+        <div class="card-body pt-3">
+            <div class="row g-3 mb-4">
+                <div class="col-md-6 col-xl-3">
+                    <div class="rounded-3 border bg-light-subtle p-3 h-100">
+                        <div class="text-muted small mb-1">Ready Assignment</div>
+                        <div class="fs-4 fw-semibold"><?php echo e(number_format($dispatchControl['summary']['ready_assignment'])); ?></div>
+                        <div class="small text-muted">Belum punya engineer owner</div>
+                    </div>
+                </div>
+                <div class="col-md-6 col-xl-3">
+                    <div class="rounded-3 border bg-light-subtle p-3 h-100">
+                        <div class="text-muted small mb-1">Pending Customer</div>
+                        <div class="fs-4 fw-semibold"><?php echo e(number_format($dispatchControl['summary']['pending_customer'])); ?></div>
+                        <div class="small text-muted">Butuh follow-up requester</div>
+                    </div>
+                </div>
+                <div class="col-md-6 col-xl-3">
+                    <div class="rounded-3 border bg-light-subtle p-3 h-100">
+                        <div class="text-muted small mb-1">Awaiting Close</div>
+                        <div class="fs-4 fw-semibold"><?php echo e(number_format($dispatchControl['summary']['completed_waiting_close'])); ?></div>
+                        <div class="small text-muted">Completed belum closed</div>
+                    </div>
+                </div>
+                <div class="col-md-6 col-xl-3">
+                    <div class="rounded-3 border bg-light-subtle p-3 h-100">
+                        <div class="text-muted small mb-1">High Load Engineers</div>
+                        <div class="fs-4 fw-semibold"><?php echo e(number_format($dispatchControl['summary']['high_load_engineers'])); ?></div>
+                        <div class="small text-muted">Kandidat rebalance</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row g-3">
+                <div class="col-xl-4">
+                    <div class="border rounded p-3 h-100">
+                        <div class="d-flex justify-content-between align-items-start gap-2 mb-3">
+                            <div>
+                                <div class="fw-semibold">Ready For Assignment</div>
+                                <div class="small text-muted">Prioritas ticket yang perlu owner engineer.</div>
+                            </div>
+                            <span class="badge bg-primary-subtle text-primary"><?php echo e($dispatchControl['ready_tickets']->count()); ?></span>
+                        </div>
+                        <div class="d-flex flex-column gap-2">
+                            <?php $__empty_1 = true; $__currentLoopData = $dispatchControl['ready_tickets']; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $ticket): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
+                                <div class="rounded-3 border bg-white p-2">
+                                    <div class="d-flex justify-content-between align-items-start gap-2">
+                                        <div class="min-w-0">
+                                            <a href="<?php echo e(route('tickets.show', $ticket)); ?>" class="fw-semibold text-dark text-decoration-none"><?php echo e($ticket->ticket_number); ?></a>
+                                            <div class="small text-muted text-truncate"><?php echo e($ticket->title); ?></div>
+                                            <div class="small text-muted"><?php echo e($ticket->requesterDepartment?->name ?? 'No department'); ?></div>
+                                        </div>
+                                        <span class="badge <?php echo e($ticketBadgeClass($ticket->status?->code)); ?>"><?php echo e($ticket->status?->name ?? '-'); ?></span>
+                                    </div>
+                                </div>
+                            <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?>
+                                <div class="text-muted small">Tidak ada ticket yang menunggu assignment.</div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-xl-4">
+                    <div class="border rounded p-3 h-100">
+                        <div class="d-flex justify-content-between align-items-start gap-2 mb-3">
+                            <div>
+                                <div class="fw-semibold">Follow-up Queue</div>
+                                <div class="small text-muted">Ticket pending customer yang perlu dikejar.</div>
+                            </div>
+                            <span class="badge bg-warning-subtle text-warning"><?php echo e($dispatchControl['pending_customer_tickets']->count()); ?></span>
+                        </div>
+                        <div class="d-flex flex-column gap-2">
+                            <?php $__empty_1 = true; $__currentLoopData = $dispatchControl['pending_customer_tickets']; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $ticket): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
+                                <div class="rounded-3 border bg-white p-2">
+                                    <div class="d-flex justify-content-between align-items-start gap-2">
+                                        <div class="min-w-0">
+                                            <a href="<?php echo e(route('tickets.show', $ticket)); ?>" class="fw-semibold text-dark text-decoration-none"><?php echo e($ticket->ticket_number); ?></a>
+                                            <div class="small text-muted text-truncate"><?php echo e($ticket->title); ?></div>
+                                            <div class="small text-muted">Owner: <?php echo e($ticket->assignedEngineer?->name ?? 'Unassigned'); ?></div>
+                                        </div>
+                                        <span class="badge <?php echo e($ticketBadgeClass($ticket->status?->code)); ?>"><?php echo e($ticket->status?->name ?? '-'); ?></span>
+                                    </div>
+                                </div>
+                            <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?>
+                                <div class="text-muted small">Tidak ada ticket pending customer.</div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-xl-4">
+                    <div class="border rounded p-3 h-100">
+                        <div class="d-flex justify-content-between align-items-start gap-2 mb-3">
+                            <div>
+                                <div class="fw-semibold">Completed Awaiting Close</div>
+                                <div class="small text-muted">Ticket selesai kerja tapi belum ditutup ops.</div>
+                            </div>
+                            <span class="badge bg-success-subtle text-success"><?php echo e($dispatchControl['completed_waiting_close_tickets']->count()); ?></span>
+                        </div>
+                        <div class="d-flex flex-column gap-2">
+                            <?php $__empty_1 = true; $__currentLoopData = $dispatchControl['completed_waiting_close_tickets']; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $ticket): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
+                                <div class="rounded-3 border bg-white p-2">
+                                    <div class="d-flex justify-content-between align-items-start gap-2">
+                                        <div class="min-w-0">
+                                            <a href="<?php echo e(route('tickets.show', $ticket)); ?>" class="fw-semibold text-dark text-decoration-none"><?php echo e($ticket->ticket_number); ?></a>
+                                            <div class="small text-muted text-truncate"><?php echo e($ticket->title); ?></div>
+                                            <div class="small text-muted">Owner: <?php echo e($ticket->assignedEngineer?->name ?? 'Unassigned'); ?></div>
+                                        </div>
+                                        <span class="badge <?php echo e($ticketBadgeClass($ticket->status?->code)); ?>"><?php echo e($ticket->status?->name ?? '-'); ?></span>
+                                    </div>
+                                </div>
+                            <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?>
+                                <div class="text-muted small">Tidak ada completed ticket yang menunggu close.</div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row g-3 mt-1">
+                <div class="col-xl-6">
+                    <div class="border rounded p-3 h-100">
+                        <div class="fw-semibold mb-3">Fallback Engineer Pool</div>
+                        <div class="d-flex flex-column gap-2">
+                            <?php $__empty_1 = true; $__currentLoopData = $dispatchControl['available_engineers']; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $card): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
+                                <div class="d-flex justify-content-between align-items-center gap-3 border-bottom pb-2">
+                                    <div>
+                                        <div class="fw-semibold"><?php echo e($card['engineer']->name); ?></div>
+                                        <div class="small text-muted"><?php echo e($card['engineer']->department?->name ?? 'No department'); ?> · <?php echo e($card['shift_label']); ?></div>
+                                    </div>
+                                    <span class="badge bg-success-subtle text-success"><?php echo e($card['active_ticket_count']); ?> active</span>
+                                </div>
+                            <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?>
+                                <div class="text-muted small">Tidak ada engineer available pada filter saat ini.</div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-xl-6">
+                    <div class="border rounded p-3 h-100">
+                        <div class="fw-semibold mb-3">Rebalance Watchlist</div>
+                        <div class="d-flex flex-column gap-2">
+                            <?php $__empty_1 = true; $__currentLoopData = $dispatchControl['busy_engineers']; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $card): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
+                                <div class="d-flex justify-content-between align-items-center gap-3 border-bottom pb-2">
+                                    <div>
+                                        <div class="fw-semibold"><?php echo e($card['engineer']->name); ?></div>
+                                        <div class="small text-muted"><?php echo e($card['engineer']->department?->name ?? 'No department'); ?> · <?php echo e($card['workload_label']); ?></div>
+                                    </div>
+                                    <span class="badge bg-danger-subtle text-danger"><?php echo e($card['active_ticket_count']); ?> active</span>
+                                </div>
+                            <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?>
+                                <div class="text-muted small">Tidak ada engineer high load pada filter saat ini.</div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+<?php endif; ?>
 
 <div class="card border-0 shadow-sm mb-4">
     <div class="card-header bg-transparent border-0 pt-4 pb-0">

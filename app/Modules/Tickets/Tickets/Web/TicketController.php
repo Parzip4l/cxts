@@ -259,6 +259,50 @@ class TicketController extends Controller
             ->with('success', 'Ticket is ready for assignment.');
     }
 
+    public function pendingCustomer(TicketDecisionRequest $request, Ticket $ticket): RedirectResponse
+    {
+        $this->authorize('pendingCustomer', $ticket);
+
+        $this->ticketService->markPendingCustomer($ticket, $request->user(), $request->validated('notes'));
+
+        return redirect()
+            ->route('tickets.show', $ticket)
+            ->with('success', 'Ticket moved to Pending Customer.');
+    }
+
+    public function close(TicketDecisionRequest $request, Ticket $ticket): RedirectResponse
+    {
+        $this->authorize('close', $ticket);
+
+        $this->ticketService->close($ticket, $request->user(), $request->validated('notes'));
+
+        return redirect()
+            ->route('tickets.show', $ticket)
+            ->with('success', 'Ticket has been closed.');
+    }
+
+    public function reopen(TicketDecisionRequest $request, Ticket $ticket): RedirectResponse
+    {
+        $this->authorize('reopen', $ticket);
+
+        $this->ticketService->reopen($ticket, $request->user(), $request->validated('notes'));
+
+        return redirect()
+            ->route('tickets.show', $ticket)
+            ->with('success', 'Ticket has been reopened.');
+    }
+
+    public function cancel(TicketDecisionRequest $request, Ticket $ticket): RedirectResponse
+    {
+        $this->authorize('cancel', $ticket);
+
+        $this->ticketService->cancel($ticket, $request->user(), $request->validated('notes'));
+
+        return redirect()
+            ->route('tickets.show', $ticket)
+            ->with('success', 'Ticket has been cancelled.');
+    }
+
     public function showAttachment(Request $request, Ticket $ticket, TicketAttachment $attachment): StreamedResponse
     {
         $this->authorize('view', $ticket);

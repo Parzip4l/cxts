@@ -61,10 +61,10 @@
     $ticketStatusBadgeClass = function ($statusCode) {
         return match (strtolower((string) $statusCode)) {
             'new', 'open', 'assigned' => 'bg-primary-subtle text-primary',
-            'pending_approval', 'on_hold' => 'bg-warning-subtle text-warning',
+            'pending_approval', 'on_hold', 'pending_customer' => 'bg-warning-subtle text-warning',
             'in_progress' => 'bg-info-subtle text-info',
             'completed', 'closed' => 'bg-success-subtle text-success',
-            'rejected' => 'bg-danger-subtle text-danger',
+            'rejected', 'cancelled' => 'bg-danger-subtle text-danger',
             default => 'bg-secondary-subtle text-secondary',
         };
     };

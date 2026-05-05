@@ -9,6 +9,22 @@
         $topRisks = collect($data['top_risks'] ?? []);
         $topImprovementAreas = collect($data['top_improvement_areas'] ?? []);
         $primaryComparison = $comparisons->firstWhere('key', $data['primary_comparison_key']) ?? $comparisons->first();
+        $reportPeriodLabel = \Carbon\Carbon::parse($current['period']['date_from'])->format('d M Y') . ' - ' . \Carbon\Carbon::parse($current['period']['date_to'])->format('d M Y');
+        $handoverLines = collect([
+            'CXTS Executive Report',
+            'Periode: ' . $reportPeriodLabel,
+            'Ringkasan: ' . $summary['headline'],
+            'Total Tickets: ' . number_format($current['summary']['total_tickets']),
+            'Completion Rate: ' . number_format($current['derived']['completion_rate'], 2) . '%',
+            'Response SLA: ' . number_format($current['sla']['response']['compliance_rate'], 2) . '%',
+            'Resolution SLA: ' . number_format($current['sla']['resolution']['compliance_rate'], 2) . '%',
+            'Engineer Effectiveness: ' . number_format($current['engineer']['avg_effectiveness_score'], 2),
+        ])->merge(
+            $actionPlan->take(3)->map(fn ($action, $index) => 'Action ' . ($index + 1) . ': [' . $action['priority'] . '] ' . $action['title'] . ' - ' . $action['owner'])
+        )->implode("\n");
+        $exportUrl = route('dashboard.report.export', request()->query());
+        $mailSubject = 'CXTS Executive Report ' . $reportPeriodLabel;
+        $mailBody = $handoverLines;
 
         $toneBadgeClass = fn ($tone) => match ($tone) {
             'improved', 'success' => 'bg-success-subtle text-success',
@@ -80,6 +96,36 @@
     ?>
 
     <div class="report-page">
+    <div class="card border-0 shadow-sm mb-4 report-toolbar">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+                <div>
+                    <h5 class="mb-1">Report Handover</h5>
+                    <div class="text-muted small"><?php echo e($reportPeriodLabel); ?></div>
+                </div>
+                <div class="d-flex flex-wrap gap-2">
+                    <a href="<?php echo e($exportUrl); ?>" class="btn btn-outline-primary text-nowrap">
+                        <iconify-icon icon="solar:download-minimalistic-outline" class="me-1"></iconify-icon>
+                        Export CSV
+                    </a>
+                    <button type="button" class="btn btn-outline-secondary text-nowrap" data-report-copy>
+                        <iconify-icon icon="solar:copy-outline" class="me-1"></iconify-icon>
+                        Copy Summary
+                    </button>
+                    <a href="mailto:?subject=<?php echo e(rawurlencode($mailSubject)); ?>&body=<?php echo e(rawurlencode($mailBody)); ?>" class="btn btn-outline-secondary text-nowrap">
+                        <iconify-icon icon="solar:letter-outline" class="me-1"></iconify-icon>
+                        Email Draft
+                    </a>
+                    <button type="button" class="btn btn-primary text-nowrap" data-report-print>
+                        <iconify-icon icon="solar:printer-2-outline" class="me-1"></iconify-icon>
+                        Print / PDF
+                    </button>
+                </div>
+            </div>
+            <textarea class="visually-hidden" data-report-summary><?php echo e($handoverLines); ?></textarea>
+        </div>
+    </div>
+
     <div class="card border-0 shadow-sm mb-4">
         <div class="card-header bg-transparent border-0 pt-4 pb-0">
             <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
@@ -449,6 +495,30 @@
             page: 'executive-report',
             executiveReport: <?php echo json_encode($data, 15, 512) ?>,
         };
+
+        document.addEventListener('DOMContentLoaded', () => {
+            document.querySelector('[data-report-print]')?.addEventListener('click', () => {
+                window.print();
+            });
+
+            document.querySelector('[data-report-copy]')?.addEventListener('click', async (event) => {
+                const button = event.currentTarget;
+                const summary = document.querySelector('[data-report-summary]')?.value || '';
+
+                try {
+                    await navigator.clipboard.writeText(summary);
+                    const originalText = button.textContent;
+                    button.textContent = 'Copied';
+                    window.setTimeout(() => {
+                        button.textContent = originalText;
+                    }, 1400);
+                } catch (error) {
+                    const summaryField = document.querySelector('[data-report-summary]');
+                    summaryField?.classList.remove('visually-hidden');
+                    summaryField?.select();
+                }
+            });
+        });
     </script>
     <?php echo app('Illuminate\Foundation\Vite')(['resources/js/pages/operations-charts.js']); ?>
 <?php $__env->stopPush(); ?>

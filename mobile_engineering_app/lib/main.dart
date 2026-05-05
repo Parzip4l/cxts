@@ -8,9 +8,13 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:image/image.dart' as img;
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sqflite/sqflite.dart';
 
 const String kApiBaseUrl = String.fromEnvironment(
   'API_BASE_URL',
@@ -299,9 +303,14 @@ class UserProfile {
 }
 
 class ApiException implements Exception {
-  const ApiException(this.message, {this.errors = const {}});
+  const ApiException(
+    this.message, {
+    this.errors = const {},
+    this.isNetworkIssue = false,
+  });
   final String message;
   final Map<String, List<String>> errors;
+  final bool isNetworkIssue;
   @override
   String toString() => message;
 }
@@ -341,6 +350,420 @@ class PagedResponse {
   }
 }
 
+class OfflineActionType {
+  static const taskTransition = 'task_transition';
+  static const taskWorklog = 'task_worklog';
+  static const inspectionItems = 'inspection_items';
+  static const inspectionEvidence = 'inspection_evidence';
+  static const inspectionSubmit = 'inspection_submit';
+}
+
+class OfflineAction {
+  const OfflineAction({
+    required this.id,
+    required this.type,
+    required this.label,
+    required this.payload,
+    required this.createdAt,
+    required this.attempts,
+    this.lastError,
+  });
+
+  final String id;
+  final String type;
+  final String label;
+  final Map<String, dynamic> payload;
+  final DateTime createdAt;
+  final int attempts;
+  final String? lastError;
+
+  factory OfflineAction.fromDb(Map<String, Object?> row) {
+    return OfflineAction(
+      id: row['id'] as String,
+      type: row['type'] as String,
+      label: row['label'] as String,
+      payload: jsonDecode(row['payload'] as String) as Map<String, dynamic>,
+      createdAt: DateTime.parse(row['created_at'] as String),
+      attempts: (row['attempts'] as num?)?.toInt() ?? 0,
+      lastError: row['last_error'] as String?,
+    );
+  }
+}
+
+class OfflineSyncResult {
+  const OfflineSyncResult({
+    required this.processed,
+    required this.succeeded,
+    required this.failed,
+  });
+
+  final int processed;
+  final int succeeded;
+  final int failed;
+}
+
+class OfflineActionQueue {
+  OfflineActionQueue._();
+  static final OfflineActionQueue instance = OfflineActionQueue._();
+
+  Database? _db;
+
+  Future<Database> _database() async {
+    final existing = _db;
+    if (existing != null) {
+      return existing;
+    }
+
+    final basePath = await getDatabasesPath();
+    final db = await openDatabase(
+      '$basePath/field_offline_actions.db',
+      version: 1,
+      onCreate: (database, _) async {
+        await database.execute('''
+          CREATE TABLE offline_actions (
+            id TEXT PRIMARY KEY,
+            type TEXT NOT NULL,
+            label TEXT NOT NULL,
+            payload TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT
+          )
+        ''');
+      },
+    );
+
+    _db = db;
+    return db;
+  }
+
+  Future<String> enqueue({
+    required String type,
+    required String label,
+    required Map<String, dynamic> payload,
+  }) async {
+    final database = await _database();
+    final now = DateTime.now();
+    final id = '${now.microsecondsSinceEpoch}_${type.hashCode.abs()}';
+    await database.insert('offline_actions', <String, Object?>{
+      'id': id,
+      'type': type,
+      'label': label,
+      'payload': jsonEncode(payload),
+      'created_at': now.toIso8601String(),
+      'attempts': 0,
+      'last_error': null,
+    });
+    return id;
+  }
+
+  Future<int> count() async {
+    final database = await _database();
+    final rows = await database.rawQuery(
+      'SELECT COUNT(*) AS total FROM offline_actions',
+    );
+    return (rows.first['total'] as num?)?.toInt() ?? 0;
+  }
+
+  Future<List<OfflineAction>> all() async {
+    final database = await _database();
+    final rows = await database.query(
+      'offline_actions',
+      orderBy: 'created_at ASC',
+    );
+    return rows.map(OfflineAction.fromDb).toList();
+  }
+
+  Future<void> delete(String id) async {
+    final database = await _database();
+    await database.delete('offline_actions', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> markFailed(OfflineAction action, Object error) async {
+    final database = await _database();
+    await database.update(
+      'offline_actions',
+      <String, Object?>{
+        'attempts': action.attempts + 1,
+        'last_error': error.toString(),
+      },
+      where: 'id = ?',
+      whereArgs: [action.id],
+    );
+  }
+
+  Future<OfflineSyncResult> syncWith(ApiRepository api) async {
+    final actions = await all();
+    var processed = 0;
+    var succeeded = 0;
+    var failed = 0;
+
+    for (final action in actions) {
+      processed++;
+      try {
+        await api.replayOfflineAction(action);
+        await delete(action.id);
+        succeeded++;
+      } on ApiException catch (error) {
+        await markFailed(action, error);
+        failed++;
+        if (error.isNetworkIssue) {
+          break;
+        }
+      } catch (error) {
+        await markFailed(action, error);
+        failed++;
+      }
+    }
+
+    return OfflineSyncResult(
+      processed: processed,
+      succeeded: succeeded,
+      failed: failed,
+    );
+  }
+}
+
+class FieldEvidenceDraft {
+  const FieldEvidenceDraft({required this.file, this.stamp});
+
+  final PlatformFile file;
+  final FieldLocationStamp? stamp;
+
+  Map<String, dynamic> toPayload() => <String, dynamic>{
+    'path': file.path,
+    'name': file.name,
+    'size': file.size,
+    if (stamp != null) 'stamp': stamp!.toJson(),
+  };
+}
+
+class FieldLocationStamp {
+  const FieldLocationStamp({
+    required this.capturedAt,
+    this.latitude,
+    this.longitude,
+    this.accuracyMeters,
+    this.issue,
+  });
+
+  final DateTime capturedAt;
+  final double? latitude;
+  final double? longitude;
+  final double? accuracyMeters;
+  final String? issue;
+
+  static Future<FieldLocationStamp> capture() async {
+    final capturedAt = DateTime.now();
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        return FieldLocationStamp(
+          capturedAt: capturedAt,
+          issue: 'GPS device tidak aktif',
+        );
+      }
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        return FieldLocationStamp(
+          capturedAt: capturedAt,
+          issue: 'Izin lokasi tidak diberikan',
+        );
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 8),
+        ),
+      );
+
+      return FieldLocationStamp(
+        capturedAt: capturedAt,
+        latitude: position.latitude,
+        longitude: position.longitude,
+        accuracyMeters: position.accuracy,
+      );
+    } catch (error) {
+      return FieldLocationStamp(
+        capturedAt: capturedAt,
+        issue: 'GPS tidak tersedia: $error',
+      );
+    }
+  }
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+    'captured_at': capturedAt.toIso8601String(),
+    'latitude': latitude,
+    'longitude': longitude,
+    'accuracy_meters': accuracyMeters,
+    'issue': issue,
+  };
+
+  String toNotesLine() {
+    final timestamp = DateFormat(
+      'yyyy-MM-dd HH:mm:ss',
+    ).format(capturedAt.toLocal());
+
+    if (latitude != null && longitude != null) {
+      final accuracy = accuracyMeters == null
+          ? '-'
+          : '${accuracyMeters!.toStringAsFixed(0)}m';
+      return 'Mobile evidence: $timestamp | GPS ${latitude!.toStringAsFixed(6)}, ${longitude!.toStringAsFixed(6)} | accuracy $accuracy';
+    }
+
+    return 'Mobile evidence: $timestamp | GPS unavailable (${issue ?? 'unknown'})';
+  }
+
+  List<String> watermarkLines() {
+    final timestamp = DateFormat(
+      'yyyy-MM-dd HH:mm:ss',
+    ).format(capturedAt.toLocal());
+
+    if (latitude != null && longitude != null) {
+      final accuracy = accuracyMeters == null
+          ? '-'
+          : '${accuracyMeters!.toStringAsFixed(0)}m';
+      return <String>[
+        'CXTS FIELD EVIDENCE',
+        timestamp,
+        '${latitude!.toStringAsFixed(6)}, ${longitude!.toStringAsFixed(6)} | $accuracy',
+      ];
+    }
+
+    return <String>['CXTS FIELD EVIDENCE', timestamp, 'GPS unavailable'];
+  }
+}
+
+class FieldEvidenceCapture {
+  FieldEvidenceCapture._();
+  static final ImagePicker _picker = ImagePicker();
+
+  static Future<FieldEvidenceDraft?> capturePhoto() async {
+    final photo = await _picker.pickImage(
+      source: ImageSource.camera,
+      imageQuality: 76,
+      maxWidth: 1600,
+    );
+
+    if (photo == null) {
+      return null;
+    }
+
+    final stamp = await FieldLocationStamp.capture();
+    final file = await _watermarkPhoto(photo.path, stamp);
+
+    return FieldEvidenceDraft(file: file, stamp: stamp);
+  }
+
+  static Future<PlatformFile> _watermarkPhoto(
+    String sourcePath,
+    FieldLocationStamp stamp,
+  ) async {
+    final originalName = basenameFromPath(sourcePath);
+    try {
+      final source = File(sourcePath);
+      final decoded = img.decodeImage(await source.readAsBytes());
+      if (decoded == null) {
+        return persistPlatformFile(
+          PlatformFile(
+            path: sourcePath,
+            name: originalName,
+            size: await source.length(),
+          ),
+        );
+      }
+
+      final image = decoded.width > 1600
+          ? img.copyResize(decoded, width: 1600)
+          : decoded;
+      final lines = stamp.watermarkLines();
+      final boxHeight = (lines.length * 30) + 28;
+      final top = (image.height - boxHeight).clamp(0, image.height).toInt();
+
+      img.fillRect(
+        image,
+        x1: 0,
+        y1: top,
+        x2: image.width - 1,
+        y2: image.height - 1,
+        color: img.ColorRgba8(0, 0, 0, 165),
+      );
+
+      for (var index = 0; index < lines.length; index++) {
+        img.drawString(
+          image,
+          lines[index],
+          font: img.arial24,
+          x: 18,
+          y: top + 14 + (index * 30),
+          color: img.ColorRgb8(255, 255, 255),
+        );
+      }
+
+      final basePath = await getDatabasesPath();
+      final directory = Directory('$basePath/offline_evidence');
+      if (!directory.existsSync()) {
+        directory.createSync(recursive: true);
+      }
+
+      final target = File(
+        '${directory.path}/${DateTime.now().microsecondsSinceEpoch}_${sanitizeFileName(originalName)}',
+      );
+      await target.writeAsBytes(img.encodeJpg(image, quality: 82));
+
+      return PlatformFile(
+        path: target.path,
+        name: originalName,
+        size: await target.length(),
+      );
+    } catch (_) {
+      return persistPlatformFile(
+        PlatformFile(
+          path: sourcePath,
+          name: originalName,
+          size: await File(sourcePath).length(),
+        ),
+      );
+    }
+  }
+
+  static Future<PlatformFile> persistPlatformFile(PlatformFile file) async {
+    final sourcePath = file.path;
+    if (sourcePath == null || sourcePath.isEmpty) {
+      return file;
+    }
+
+    final source = File(sourcePath);
+    if (!source.existsSync()) {
+      return file;
+    }
+
+    final basePath = await getDatabasesPath();
+    final directory = Directory('$basePath/offline_evidence');
+    if (!directory.existsSync()) {
+      directory.createSync(recursive: true);
+    }
+
+    final targetName =
+        '${DateTime.now().microsecondsSinceEpoch}_${sanitizeFileName(file.name)}';
+    final target = File('${directory.path}/$targetName');
+    await source.copy(target.path);
+
+    return PlatformFile(
+      path: target.path,
+      name: file.name,
+      size: await target.length(),
+    );
+  }
+}
+
 class ApiRepository {
   ApiRepository(this._session)
     : _dio = Dio(
@@ -366,6 +789,7 @@ class ApiRepository {
 
   final Dio _dio;
   final SessionController _session;
+  final OfflineActionQueue _offlineQueue = OfflineActionQueue.instance;
 
   Future<UserProfile> login({
     required String email,
@@ -487,12 +911,25 @@ class ApiRepository {
     int ticketId,
     String action, {
     String? notes,
+    List<PlatformFile> completionEvidences = const <PlatformFile>[],
   }) async {
+    final files = completionEvidences
+        .where((file) => file.path != null && file.path!.isNotEmpty)
+        .toList();
+    final data = files.isEmpty
+        ? <String, dynamic>{'notes': notes}
+        : FormData.fromMap(<String, dynamic>{
+            'notes': notes,
+            'completion_evidences': await Future.wait(
+              files.map(
+                (file) =>
+                    MultipartFile.fromFile(file.path!, filename: file.name),
+              ),
+            ),
+          });
+
     final response = await _safeRequest(
-      () => _dio.post<dynamic>(
-        '/engineer/tasks/$ticketId/$action',
-        data: <String, dynamic>{'notes': notes},
-      ),
+      () => _dio.post<dynamic>('/engineer/tasks/$ticketId/$action', data: data),
     );
     return _extractDataMap(response.data);
   }
@@ -752,6 +1189,93 @@ class ApiRepository {
     return 'android';
   }
 
+  Future<int> pendingOfflineActionCount() => _offlineQueue.count();
+
+  Future<OfflineSyncResult> syncPendingOfflineActions() async {
+    if (!_session.isAuthenticated) {
+      return const OfflineSyncResult(processed: 0, succeeded: 0, failed: 0);
+    }
+
+    return _offlineQueue.syncWith(this);
+  }
+
+  Future<void> replayOfflineAction(OfflineAction action) async {
+    final payload = action.payload;
+
+    switch (action.type) {
+      case OfflineActionType.taskTransition:
+        await transitionTask(
+          (payload['ticket_id'] as num).toInt(),
+          payload['action'] as String,
+          notes: payload['notes'] as String?,
+          completionEvidences: await _filesFromPayload(
+            payload['completion_evidences'],
+          ),
+        );
+        return;
+      case OfflineActionType.taskWorklog:
+        await addTaskWorklog(
+          (payload['ticket_id'] as num).toInt(),
+          description: payload['description'] as String,
+          logType: (payload['log_type'] as String?) ?? 'progress',
+        );
+        return;
+      case OfflineActionType.inspectionItems:
+        await updateInspectionItems(
+          (payload['inspection_id'] as num).toInt(),
+          (payload['items'] as List<dynamic>? ?? <dynamic>[])
+              .whereType<Map<String, dynamic>>()
+              .toList(),
+        );
+        return;
+      case OfflineActionType.inspectionEvidence:
+        final file = await _fileFromPayload(payload['file']);
+        await uploadInspectionEvidence(
+          (payload['inspection_id'] as num).toInt(),
+          file: file,
+          inspectionItemId: (payload['inspection_item_id'] as num?)?.toInt(),
+          notes: payload['notes'] as String?,
+        );
+        return;
+      case OfflineActionType.inspectionSubmit:
+        await submitInspection(
+          (payload['inspection_id'] as num).toInt(),
+          finalResult: payload['final_result'] as String,
+          summaryNotes: payload['summary_notes'] as String?,
+          supportingFiles: await _filesFromPayload(payload['supporting_files']),
+        );
+        return;
+    }
+  }
+
+  Future<List<PlatformFile>> _filesFromPayload(dynamic raw) async {
+    final rows = raw is List<dynamic> ? raw : <dynamic>[];
+    final files = <PlatformFile>[];
+
+    for (final row in rows.whereType<Map<String, dynamic>>()) {
+      files.add(await _fileFromPayload(row));
+    }
+
+    return files;
+  }
+
+  Future<PlatformFile> _fileFromPayload(dynamic raw) async {
+    final map = raw is Map<String, dynamic> ? raw : <String, dynamic>{};
+    final path = map['path'] as String?;
+    final name = (map['name'] as String?) ?? basenameFromPath(path ?? 'file');
+
+    if (path == null || path.isEmpty) {
+      throw const ApiException('File offline tidak memiliki path.');
+    }
+
+    final file = File(path);
+    if (!file.existsSync()) {
+      throw ApiException('File offline tidak ditemukan: $name');
+    }
+
+    return PlatformFile(path: path, name: name, size: await file.length());
+  }
+
   Future<Response<dynamic>> _safeRequest(
     Future<Response<dynamic>> Function() executor,
   ) async {
@@ -763,6 +1287,21 @@ class ApiRepository {
   }
 
   ApiException _mapDioException(DioException error) {
+    final isNetworkIssue =
+        error.response == null &&
+        (error.type == DioExceptionType.connectionTimeout ||
+            error.type == DioExceptionType.sendTimeout ||
+            error.type == DioExceptionType.receiveTimeout ||
+            error.type == DioExceptionType.connectionError ||
+            error.type == DioExceptionType.unknown);
+
+    if (isNetworkIssue) {
+      return const ApiException(
+        'Sinyal tidak stabil. Aksi bisa disimpan offline lalu disinkronkan.',
+        isNetworkIssue: true,
+      );
+    }
+
     final responseData = error.response?.data;
     final map = _asMap(responseData);
     final message =
@@ -971,11 +1510,15 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   int _selectedIndex = 0;
   bool _pushRegistered = false;
+  bool _syncingOffline = false;
+  int _pendingOfflineActions = 0;
 
   @override
   void initState() {
     super.initState();
     _registerPushTokenIfNeeded();
+    _refreshOfflineStatus();
+    _syncOfflineActions(showSnack: false);
   }
 
   Future<void> _registerPushTokenIfNeeded() async {
@@ -985,6 +1528,42 @@ class _HomeShellState extends State<HomeShell> {
 
     _pushRegistered = true;
     await widget.api.autoRegisterPushToken();
+  }
+
+  Future<void> _refreshOfflineStatus() async {
+    final count = await widget.api.pendingOfflineActionCount();
+    if (!mounted) {
+      return;
+    }
+    setState(() => _pendingOfflineActions = count);
+  }
+
+  Future<void> _syncOfflineActions({bool showSnack = true}) async {
+    if (_syncingOffline) {
+      return;
+    }
+
+    setState(() => _syncingOffline = true);
+    try {
+      final result = await widget.api.syncPendingOfflineActions();
+      await _refreshOfflineStatus();
+      if (!mounted || !showSnack) {
+        return;
+      }
+
+      final message = result.succeeded > 0
+          ? '${result.succeeded} aksi offline berhasil disinkronkan.'
+          : _pendingOfflineActions > 0
+          ? 'Masih ada $_pendingOfflineActions aksi offline menunggu sinyal stabil.'
+          : 'Tidak ada aksi offline yang perlu disinkronkan.';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    } finally {
+      if (mounted) {
+        setState(() => _syncingOffline = false);
+      }
+    }
   }
 
   List<_NavItem> _buildItems(UserProfile user) {
@@ -1086,7 +1665,7 @@ class _HomeShellState extends State<HomeShell> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 Text(
-                  'Taplox',
+                  'CXTS',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
@@ -1110,6 +1689,25 @@ class _HomeShellState extends State<HomeShell> {
             onPressed: _openNotifications,
             tooltip: 'Notifications',
             icon: const Icon(Icons.notifications_none_rounded),
+          ),
+          IconButton(
+            onPressed: _syncingOffline
+                ? null
+                : () => _syncOfflineActions(showSnack: true),
+            tooltip: _pendingOfflineActions > 0
+                ? 'Sync $_pendingOfflineActions offline actions'
+                : 'Sync offline actions',
+            icon: Badge(
+              isLabelVisible: _pendingOfflineActions > 0,
+              label: Text('$_pendingOfflineActions'),
+              child: _syncingOffline
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.cloud_sync_outlined),
+            ),
           ),
           Padding(
             padding: const EdgeInsets.only(right: 12),
@@ -1766,6 +2364,7 @@ class _EngineerTaskDetailPageState extends State<EngineerTaskDetailPage> {
       TextEditingController();
   final TextEditingController _worklogController = TextEditingController();
   String _worklogType = 'progress';
+  List<FieldEvidenceDraft> _completionEvidenceFiles = <FieldEvidenceDraft>[];
 
   @override
   void initState() {
@@ -1793,28 +2392,116 @@ class _EngineerTaskDetailPageState extends State<EngineerTaskDetailPage> {
   }
 
   Future<void> _runTransition(String action) async {
+    final notes = notesWithEvidenceStamps(
+      _transitionNotesController.text,
+      action == 'complete'
+          ? _completionEvidenceFiles
+          : const <FieldEvidenceDraft>[],
+    );
+
+    if (action == 'complete') {
+      if (_transitionNotesController.text.trim().isEmpty) {
+        _showSnack('Resolution notes wajib diisi sebelum complete.');
+        return;
+      }
+
+      if (_completionEvidenceFiles.isEmpty) {
+        _showSnack('Minimal satu foto evidence wajib dipilih.');
+        return;
+      }
+    }
+
     setState(() => _submitting = true);
     try {
       await widget.api.transitionTask(
         widget.ticketId,
         action,
-        notes: _transitionNotesController.text.trim().isEmpty
-            ? null
-            : _transitionNotesController.text.trim(),
+        notes: notes,
+        completionEvidences: action == 'complete'
+            ? _completionEvidenceFiles.map((evidence) => evidence.file).toList()
+            : const <PlatformFile>[],
       );
       _transitionNotesController.clear();
+      if (action == 'complete') {
+        _completionEvidenceFiles = <FieldEvidenceDraft>[];
+      }
       await _load();
     } on ApiException catch (error) {
+      if (error.isNetworkIssue) {
+        await OfflineActionQueue.instance.enqueue(
+          type: OfflineActionType.taskTransition,
+          label: 'Task $action #${widget.ticketId}',
+          payload: <String, dynamic>{
+            'ticket_id': widget.ticketId,
+            'action': action,
+            'notes': notes,
+            'completion_evidences': action == 'complete'
+                ? evidencePayloads(_completionEvidenceFiles)
+                : <Map<String, dynamic>>[],
+          },
+        );
+        _transitionNotesController.clear();
+        if (action == 'complete') {
+          _completionEvidenceFiles = <FieldEvidenceDraft>[];
+        }
+        _showSnack(
+          'Sinyal buruk. Aksi task disimpan offline untuk sync nanti.',
+        );
+        return;
+      }
       _showSnack(error.message);
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
   }
 
+  Future<void> _captureCompletionEvidence() async {
+    final evidence = await FieldEvidenceCapture.capturePhoto();
+    if (evidence == null) {
+      return;
+    }
+
+    setState(() {
+      _completionEvidenceFiles = <FieldEvidenceDraft>[
+        ..._completionEvidenceFiles,
+        evidence,
+      ].take(5).toList();
+    });
+  }
+
+  Future<void> _pickCompletionEvidence() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const <String>['jpg', 'jpeg', 'png', 'webp'],
+      allowMultiple: true,
+    );
+
+    if (result == null || result.files.isEmpty) {
+      return;
+    }
+
+    final persisted = <FieldEvidenceDraft>[];
+    for (final file in result.files.take(5)) {
+      persisted.add(
+        FieldEvidenceDraft(
+          file: await FieldEvidenceCapture.persistPlatformFile(file),
+        ),
+      );
+    }
+
+    setState(() {
+      _completionEvidenceFiles = <FieldEvidenceDraft>[
+        ..._completionEvidenceFiles,
+        ...persisted,
+      ].take(5).toList();
+    });
+  }
+
   Future<void> _addWorklog() async {
     final description = _worklogController.text.trim();
-    if (description.isEmpty)
+    if (description.isEmpty) {
       return _showSnack('Deskripsi worklog wajib diisi.');
+    }
     setState(() => _submitting = true);
     try {
       await widget.api.addTaskWorklog(
@@ -1825,6 +2512,20 @@ class _EngineerTaskDetailPageState extends State<EngineerTaskDetailPage> {
       _worklogController.clear();
       await _load();
     } on ApiException catch (error) {
+      if (error.isNetworkIssue) {
+        await OfflineActionQueue.instance.enqueue(
+          type: OfflineActionType.taskWorklog,
+          label: 'Worklog #${widget.ticketId}',
+          payload: <String, dynamic>{
+            'ticket_id': widget.ticketId,
+            'description': description,
+            'log_type': _worklogType,
+          },
+        );
+        _worklogController.clear();
+        _showSnack('Sinyal buruk. Worklog disimpan offline untuk sync nanti.');
+        return;
+      }
       _showSnack(error.message);
     } finally {
       if (mounted) setState(() => _submitting = false);
@@ -2029,10 +2730,72 @@ class _EngineerTaskDetailPageState extends State<EngineerTaskDetailPage> {
                             controller: _transitionNotesController,
                             maxLines: 2,
                             decoration: const InputDecoration(
-                              labelText: 'Catatan transisi (opsional)',
+                              labelText: 'Catatan transisi / resolution notes',
                             ),
                           ),
                           const SizedBox(height: 16),
+                          if (canComplete) ...[
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                FilledButton.tonalIcon(
+                                  onPressed: _submitting
+                                      ? null
+                                      : _captureCompletionEvidence,
+                                  icon: const Icon(Icons.camera_alt_outlined),
+                                  label: const Text('Ambil Foto'),
+                                ),
+                                OutlinedButton.icon(
+                                  onPressed: _submitting
+                                      ? null
+                                      : _pickCompletionEvidence,
+                                  icon: const Icon(
+                                    Icons.photo_library_outlined,
+                                  ),
+                                  label: Text(
+                                    _completionEvidenceFiles.isEmpty
+                                        ? 'Pilih File'
+                                        : '${_completionEvidenceFiles.length} evidence',
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (_completionEvidenceFiles.isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                'Foto dari kamera otomatis menyimpan timestamp dan GPS jika izin tersedia.',
+                                style: const TextStyle(
+                                  color: AppColors.textSecondary,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: _completionEvidenceFiles
+                                    .map(
+                                      (evidence) => Chip(
+                                        label: Text(
+                                          evidence.stamp == null
+                                              ? evidence.file.name
+                                              : '${evidence.file.name} • GPS',
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        onDeleted: _submitting
+                                            ? null
+                                            : () => setState(
+                                                () => _completionEvidenceFiles
+                                                    .remove(evidence),
+                                              ),
+                                      ),
+                                    )
+                                    .toList(),
+                              ),
+                            ],
+                            const SizedBox(height: 16),
+                          ],
                           Wrap(
                             spacing: 8,
                             runSpacing: 8,
@@ -2808,7 +3571,7 @@ class _InspectionDetailPageState extends State<InspectionDetailPage> {
       <int, Map<String, dynamic>>{};
   final TextEditingController _summaryController = TextEditingController();
   String _finalResult = 'normal';
-  List<PlatformFile> _supportingFiles = <PlatformFile>[];
+  List<FieldEvidenceDraft> _supportingFiles = <FieldEvidenceDraft>[];
 
   @override
   void initState() {
@@ -2938,21 +3701,49 @@ class _InspectionDetailPageState extends State<InspectionDetailPage> {
       await _load();
       _showSnack('Item inspeksi berhasil disimpan.');
     } on ApiException catch (e) {
+      if (e.isNetworkIssue) {
+        await OfflineActionQueue.instance.enqueue(
+          type: OfflineActionType.inspectionItems,
+          label: 'Inspection items #${widget.inspectionId}',
+          payload: <String, dynamic>{
+            'inspection_id': widget.inspectionId,
+            'items': _itemEdits.values.toList(),
+          },
+        );
+        _itemEdits.clear();
+        _showSnack(
+          'Sinyal buruk. Perubahan item disimpan offline untuk sync nanti.',
+        );
+        return;
+      }
       _showSnack(e.message);
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
   }
 
-  Future<void> _uploadEvidence() async {
-    final picked = await FilePicker.platform.pickFiles(
-      withData: false,
-      allowMultiple: false,
-    );
-    if (picked == null || picked.files.isEmpty) return;
+  Future<void> _uploadEvidence({bool fromCamera = false}) async {
+    FieldEvidenceDraft? selectedEvidence;
+    if (fromCamera) {
+      selectedEvidence = await FieldEvidenceCapture.capturePhoto();
+    } else {
+      final picked = await FilePicker.platform.pickFiles(
+        withData: false,
+        allowMultiple: false,
+      );
+      if (picked != null && picked.files.isNotEmpty) {
+        selectedEvidence = FieldEvidenceDraft(
+          file: await FieldEvidenceCapture.persistPlatformFile(
+            picked.files.first,
+          ),
+        );
+      }
+    }
+
+    if (selectedEvidence == null) return;
     if (!mounted) return;
 
-    final selectedFile = picked.files.first;
+    final selectedFile = selectedEvidence.file;
     int? selectedItemId;
     final notesController = TextEditingController();
     final items = (_inspection?['items'] as List<dynamic>? ?? <dynamic>[])
@@ -3035,9 +3826,10 @@ class _InspectionDetailPageState extends State<InspectionDetailPage> {
       ),
     );
 
-    final notes = notesController.text.trim().isEmpty
-        ? null
-        : notesController.text.trim();
+    final notes = notesWithEvidenceStamps(
+      notesController.text,
+      <FieldEvidenceDraft>[selectedEvidence],
+    );
     notesController.dispose();
 
     if (shouldUpload != true) return;
@@ -3052,6 +3844,20 @@ class _InspectionDetailPageState extends State<InspectionDetailPage> {
       await _load();
       _showSnack('Evidence berhasil diupload.');
     } on ApiException catch (e) {
+      if (e.isNetworkIssue) {
+        await OfflineActionQueue.instance.enqueue(
+          type: OfflineActionType.inspectionEvidence,
+          label: 'Inspection evidence #${widget.inspectionId}',
+          payload: <String, dynamic>{
+            'inspection_id': widget.inspectionId,
+            'inspection_item_id': selectedItemId,
+            'notes': notes,
+            'file': selectedEvidence.toPayload(),
+          },
+        );
+        _showSnack('Sinyal buruk. Evidence disimpan offline untuk sync nanti.');
+        return;
+      }
       _showSnack(e.message);
     } finally {
       if (mounted) setState(() => _submitting = false);
@@ -3063,7 +3869,31 @@ class _InspectionDetailPageState extends State<InspectionDetailPage> {
       withData: false,
       allowMultiple: true,
     );
-    if (picked != null) setState(() => _supportingFiles = picked.files);
+    if (picked == null) {
+      return;
+    }
+
+    final files = <FieldEvidenceDraft>[];
+    for (final file in picked.files) {
+      files.add(
+        FieldEvidenceDraft(
+          file: await FieldEvidenceCapture.persistPlatformFile(file),
+        ),
+      );
+    }
+
+    setState(() => _supportingFiles = files);
+  }
+
+  Future<void> _captureSupportingPhoto() async {
+    final evidence = await FieldEvidenceCapture.capturePhoto();
+    if (evidence == null) {
+      return;
+    }
+
+    setState(() {
+      _supportingFiles = <FieldEvidenceDraft>[..._supportingFiles, evidence];
+    });
   }
 
   Future<void> _submitInspection() async {
@@ -3074,15 +3904,36 @@ class _InspectionDetailPageState extends State<InspectionDetailPage> {
       await widget.api.submitInspection(
         widget.inspectionId,
         finalResult: _finalResult,
-        summaryNotes: _summaryController.text.trim().isEmpty
-            ? null
-            : _summaryController.text.trim(),
-        supportingFiles: _supportingFiles,
+        summaryNotes: notesWithEvidenceStamps(
+          _summaryController.text,
+          _supportingFiles,
+        ),
+        supportingFiles: _supportingFiles
+            .map((evidence) => evidence.file)
+            .toList(),
       );
-      _supportingFiles = <PlatformFile>[];
+      _supportingFiles = <FieldEvidenceDraft>[];
       await _load();
       _showSnack('Inspeksi berhasil disubmit.');
     } on ApiException catch (e) {
+      if (e.isNetworkIssue) {
+        await OfflineActionQueue.instance.enqueue(
+          type: OfflineActionType.inspectionSubmit,
+          label: 'Inspection submit #${widget.inspectionId}',
+          payload: <String, dynamic>{
+            'inspection_id': widget.inspectionId,
+            'final_result': _finalResult,
+            'summary_notes': notesWithEvidenceStamps(
+              _summaryController.text,
+              _supportingFiles,
+            ),
+            'supporting_files': evidencePayloads(_supportingFiles),
+          },
+        );
+        _supportingFiles = <FieldEvidenceDraft>[];
+        _showSnack('Sinyal buruk. Submit inspeksi disimpan offline.');
+        return;
+      }
       _showSnack(e.message);
     } finally {
       if (mounted) setState(() => _submitting = false);
@@ -3268,12 +4119,30 @@ class _InspectionDetailPageState extends State<InspectionDetailPage> {
 
                   ModernCard(
                     title: 'Evidence',
-                    action: IconButton(
-                      onPressed: _submitting ? null : _uploadEvidence,
-                      icon: const Icon(
-                        Icons.upload_file_rounded,
-                        color: AppColors.primary,
-                      ),
+                    action: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          onPressed: _submitting
+                              ? null
+                              : () => _uploadEvidence(fromCamera: true),
+                          icon: const Icon(
+                            Icons.camera_alt_outlined,
+                            color: AppColors.primary,
+                          ),
+                          tooltip: 'Ambil Foto Evidence',
+                        ),
+                        IconButton(
+                          onPressed: _submitting
+                              ? null
+                              : () => _uploadEvidence(),
+                          icon: const Icon(
+                            Icons.upload_file_rounded,
+                            color: AppColors.primary,
+                          ),
+                          tooltip: 'Upload File Evidence',
+                        ),
+                      ],
                     ),
                     padding: EdgeInsets.zero,
                     child:
@@ -3346,8 +4215,18 @@ class _InspectionDetailPageState extends State<InspectionDetailPage> {
                         ),
                         if (_finalResult == 'abnormal') ...<Widget>[
                           const SizedBox(height: 16),
-                          Row(
+                          Wrap(
+                            spacing: 12,
+                            runSpacing: 8,
+                            crossAxisAlignment: WrapCrossAlignment.center,
                             children: <Widget>[
+                              FilledButton.tonalIcon(
+                                onPressed: _submitting
+                                    ? null
+                                    : _captureSupportingPhoto,
+                                icon: const Icon(Icons.camera_alt_outlined),
+                                label: const Text('Ambil Foto'),
+                              ),
                               FilledButton.tonalIcon(
                                 onPressed: _submitting
                                     ? null
@@ -3355,7 +4234,6 @@ class _InspectionDetailPageState extends State<InspectionDetailPage> {
                                 icon: const Icon(Icons.attach_file_rounded),
                                 label: const Text('File Pendukung'),
                               ),
-                              const SizedBox(width: 12),
                               Text('${_supportingFiles.length} file dipilih'),
                             ],
                           ),
@@ -3367,7 +4245,7 @@ class _InspectionDetailPageState extends State<InspectionDetailPage> {
                                 children: _supportingFiles
                                     .map(
                                       (f) => Text(
-                                        '• ${f.name}',
+                                        '• ${f.file.name}${f.stamp == null ? '' : ' • GPS'}',
                                         style: const TextStyle(
                                           color: AppColors.textSecondary,
                                         ),
@@ -4161,6 +5039,37 @@ String formatDate(dynamic raw) {
   final parsed = DateTime.tryParse(raw.toString());
   if (parsed == null) return raw.toString();
   return DateFormat('dd MMM yyyy').format(parsed);
+}
+
+String basenameFromPath(String path) {
+  final normalized = path.replaceAll('\\', '/');
+  final segments = normalized.split('/');
+  return segments.isEmpty ? path : segments.last;
+}
+
+String sanitizeFileName(String name) {
+  return name.replaceAll(RegExp(r'[^A-Za-z0-9._-]+'), '_');
+}
+
+List<Map<String, dynamic>> evidencePayloads(List<FieldEvidenceDraft> files) {
+  return files.map((evidence) => evidence.toPayload()).toList();
+}
+
+String? notesWithEvidenceStamps(
+  String? rawNotes,
+  List<FieldEvidenceDraft> evidences,
+) {
+  final notes = (rawNotes ?? '').trim();
+  final stampLines = evidences
+      .map((evidence) => evidence.stamp?.toNotesLine())
+      .whereType<String>()
+      .toList();
+
+  if (stampLines.isEmpty) {
+    return notes.isEmpty ? null : notes;
+  }
+
+  return [if (notes.isNotEmpty) notes, ...stampLines].join('\n');
 }
 
 String formatDateTime(dynamic raw) {

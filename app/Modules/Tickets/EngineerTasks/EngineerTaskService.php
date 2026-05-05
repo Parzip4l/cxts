@@ -65,11 +65,18 @@ class EngineerTaskService
         return $this->ticketService->resumeWork($ticket, $engineer, $notes);
     }
 
-    public function complete(Ticket $ticket, User $engineer, ?string $notes = null): Ticket
+    public function complete(Ticket $ticket, User $engineer, ?string $notes = null, array $completionEvidences = []): Ticket
     {
         $this->ensureOwnedByEngineer($ticket, $engineer);
 
-        return $this->ticketService->completeWork($ticket, $engineer, $notes);
+        return $this->ticketService->completeWork($ticket, $engineer, $notes, $completionEvidences);
+    }
+
+    public function pendingCustomer(Ticket $ticket, User $engineer, ?string $notes = null): Ticket
+    {
+        $this->ensureOwnedByEngineer($ticket, $engineer);
+
+        return $this->ticketService->markPendingCustomer($ticket, $engineer, $notes);
     }
 
     public function addWorklog(Ticket $ticket, User $engineer, array $data)
@@ -81,7 +88,7 @@ class EngineerTaskService
 
     public function paginateHistory(User $engineer, int $perPage = 15): LengthAwarePaginator
     {
-        $closedStatusCodes = [TicketService::STATUS_COMPLETED, TicketService::STATUS_CLOSED];
+        $closedStatusCodes = [TicketService::STATUS_COMPLETED, TicketService::STATUS_CLOSED, TicketService::STATUS_CANCELLED];
 
         return Ticket::query()
             ->with(['status:id,name,code', 'category:id,name', 'priority:id,name'])

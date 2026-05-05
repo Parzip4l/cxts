@@ -3,11 +3,12 @@
 
 <?php
     $statusCode = strtoupper((string) ($ticket->status?->code ?? ''));
-    $isTerminal = $ticket->completed_at !== null || $ticket->closed_at !== null || in_array($statusCode, ['COMPLETED', 'CLOSED'], true);
+    $isTerminal = $ticket->completed_at !== null || $ticket->closed_at !== null || in_array($statusCode, ['COMPLETED', 'CLOSED', 'CANCELLED'], true);
     $canStart = !$isTerminal && $ticket->started_at === null;
     $canPause = !$isTerminal && $ticket->started_at !== null && $ticket->paused_at === null;
     $canResume = !$isTerminal && $ticket->started_at !== null && $ticket->paused_at !== null;
     $canComplete = !$isTerminal && $ticket->started_at !== null;
+    $canPendingCustomer = !$isTerminal && $ticket->started_at !== null && $statusCode !== 'PENDING_CUSTOMER';
     $workEndedAt = $ticket->completed_at ?? $ticket->resolved_at ?? $ticket->closed_at;
     $workDurationMinutes = ($ticket->started_at && $workEndedAt) ? $ticket->started_at->diffInMinutes($workEndedAt) : null;
 ?>
@@ -196,6 +197,41 @@ unset($__errorArgs, $__bag); ?>
                 <?php if($errors->has('action')): ?>
                     <div class="alert alert-danger"><?php echo e($errors->first('action')); ?></div>
                 <?php endif; ?>
+                <?php if($errors->has('notes') || $errors->has('completion_evidences') || $errors->has('completion_evidences.*')): ?>
+                    <div class="alert alert-danger">
+                        <div class="fw-semibold mb-1">Complete Work belum bisa diproses.</div>
+                        <?php $__errorArgs = ['notes'];
+$__bag = $errors->getBag($__errorArgs[1] ?? 'default');
+if ($__bag->has($__errorArgs[0])) :
+if (isset($message)) { $__messageOriginal = $message; }
+$message = $__bag->first($__errorArgs[0]); ?>
+                            <div><?php echo e($message); ?></div>
+                        <?php unset($message);
+if (isset($__messageOriginal)) { $message = $__messageOriginal; }
+endif;
+unset($__errorArgs, $__bag); ?>
+                        <?php $__errorArgs = ['completion_evidences'];
+$__bag = $errors->getBag($__errorArgs[1] ?? 'default');
+if ($__bag->has($__errorArgs[0])) :
+if (isset($message)) { $__messageOriginal = $message; }
+$message = $__bag->first($__errorArgs[0]); ?>
+                            <div><?php echo e($message); ?></div>
+                        <?php unset($message);
+if (isset($__messageOriginal)) { $message = $__messageOriginal; }
+endif;
+unset($__errorArgs, $__bag); ?>
+                        <?php $__errorArgs = ['completion_evidences.*'];
+$__bag = $errors->getBag($__errorArgs[1] ?? 'default');
+if ($__bag->has($__errorArgs[0])) :
+if (isset($message)) { $__messageOriginal = $message; }
+$message = $__bag->first($__errorArgs[0]); ?>
+                            <div><?php echo e($message); ?></div>
+                        <?php unset($message);
+if (isset($__messageOriginal)) { $message = $__messageOriginal; }
+endif;
+unset($__errorArgs, $__bag); ?>
+                    </div>
+                <?php endif; ?>
 
                 <div class="d-grid gap-2">
                     <?php if($canStart): ?>
@@ -223,19 +259,136 @@ unset($__errorArgs, $__bag); ?>
                     <?php endif; ?>
 
                     <?php if($canComplete): ?>
-                        <form method="POST" action="<?php echo e(route('engineer-tasks.complete', $ticket)); ?>">
+                        <form method="POST" action="<?php echo e(route('engineer-tasks.complete', $ticket)); ?>" enctype="multipart/form-data" class="border rounded p-3 bg-light-subtle">
                             <?php echo csrf_field(); ?>
-                            <input type="hidden" name="notes" value="Complete work from web panel">
-                            <button type="submit" class="btn btn-success w-100">Complete Work</button>
+                            <div class="mb-3">
+                                <label for="completion_notes" class="form-label">Resolution Notes</label>
+                                <textarea
+                                    id="completion_notes"
+                                    name="notes"
+                                    rows="3"
+                                    class="form-control <?php $__errorArgs = ['notes'];
+$__bag = $errors->getBag($__errorArgs[1] ?? 'default');
+if ($__bag->has($__errorArgs[0])) :
+if (isset($message)) { $__messageOriginal = $message; }
+$message = $__bag->first($__errorArgs[0]); ?> is-invalid <?php unset($message);
+if (isset($__messageOriginal)) { $message = $__messageOriginal; }
+endif;
+unset($__errorArgs, $__bag); ?>"
+                                    placeholder="Jelaskan tindakan perbaikan dan hasil akhirnya."
+                                    required
+                                ><?php echo e(old('notes')); ?></textarea>
+                                <?php $__errorArgs = ['notes'];
+$__bag = $errors->getBag($__errorArgs[1] ?? 'default');
+if ($__bag->has($__errorArgs[0])) :
+if (isset($message)) { $__messageOriginal = $message; }
+$message = $__bag->first($__errorArgs[0]); ?>
+                                    <div class="invalid-feedback"><?php echo e($message); ?></div>
+                                <?php unset($message);
+if (isset($__messageOriginal)) { $message = $__messageOriginal; }
+endif;
+unset($__errorArgs, $__bag); ?>
+                            </div>
+                            <div class="mb-3">
+                                <label for="completion_evidences" class="form-label">Completion Evidence</label>
+                                <input
+                                    type="file"
+                                    id="completion_evidences"
+                                    name="completion_evidences[]"
+                                    class="form-control <?php $__errorArgs = ['completion_evidences'];
+$__bag = $errors->getBag($__errorArgs[1] ?? 'default');
+if ($__bag->has($__errorArgs[0])) :
+if (isset($message)) { $__messageOriginal = $message; }
+$message = $__bag->first($__errorArgs[0]); ?> is-invalid <?php unset($message);
+if (isset($__messageOriginal)) { $message = $__messageOriginal; }
+endif;
+unset($__errorArgs, $__bag); ?> <?php $__errorArgs = ['completion_evidences.*'];
+$__bag = $errors->getBag($__errorArgs[1] ?? 'default');
+if ($__bag->has($__errorArgs[0])) :
+if (isset($message)) { $__messageOriginal = $message; }
+$message = $__bag->first($__errorArgs[0]); ?> is-invalid <?php unset($message);
+if (isset($__messageOriginal)) { $message = $__messageOriginal; }
+endif;
+unset($__errorArgs, $__bag); ?>"
+                                    accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                                    multiple
+                                    required
+                                >
+                                <div class="form-text">Wajib minimal 1 foto. Maksimal 5 foto, masing-masing 5MB. Format: JPG, PNG, WEBP.</div>
+                                <?php $__errorArgs = ['completion_evidences'];
+$__bag = $errors->getBag($__errorArgs[1] ?? 'default');
+if ($__bag->has($__errorArgs[0])) :
+if (isset($message)) { $__messageOriginal = $message; }
+$message = $__bag->first($__errorArgs[0]); ?>
+                                    <div class="invalid-feedback"><?php echo e($message); ?></div>
+                                <?php unset($message);
+if (isset($__messageOriginal)) { $message = $__messageOriginal; }
+endif;
+unset($__errorArgs, $__bag); ?>
+                                <?php $__errorArgs = ['completion_evidences.*'];
+$__bag = $errors->getBag($__errorArgs[1] ?? 'default');
+if ($__bag->has($__errorArgs[0])) :
+if (isset($message)) { $__messageOriginal = $message; }
+$message = $__bag->first($__errorArgs[0]); ?>
+                                    <div class="invalid-feedback d-block"><?php echo e($message); ?></div>
+                                <?php unset($message);
+if (isset($__messageOriginal)) { $message = $__messageOriginal; }
+endif;
+unset($__errorArgs, $__bag); ?>
+                            </div>
+                            <button type="submit" class="btn btn-success w-100">Complete Work With Evidence</button>
                         </form>
                     <?php endif; ?>
 
-                    <?php if(! $canStart && ! $canPause && ! $canResume && ! $canComplete): ?>
+                    <?php if($canPendingCustomer): ?>
+                        <form method="POST" action="<?php echo e(route('engineer-tasks.pending-customer', $ticket)); ?>">
+                            <?php echo csrf_field(); ?>
+                            <input type="hidden" name="notes" value="Waiting confirmation or follow-up from customer">
+                            <button type="submit" class="btn btn-outline-warning w-100">Pending Customer</button>
+                        </form>
+                    <?php endif; ?>
+
+                    <?php if(! $canStart && ! $canPause && ! $canResume && ! $canComplete && ! $canPendingCustomer): ?>
                         <div class="alert alert-light border mb-0">
                             Tidak ada aksi transisi yang tersedia untuk status task saat ini.
                         </div>
                     <?php endif; ?>
                 </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">Evidence & Attachments</h5>
+                <span class="badge bg-light text-muted border"><?php echo e($ticket->attachments->count()); ?> file(s)</span>
+            </div>
+            <div class="card-body">
+                <?php if($ticket->attachments->isEmpty()): ?>
+                    <p class="text-muted mb-0">Belum ada evidence atau lampiran foto.</p>
+                <?php else: ?>
+                    <div class="row g-2">
+                        <?php $__currentLoopData = $ticket->attachments; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $attachment): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+                            <div class="col-6">
+                                <a
+                                    href="<?php echo e(route('tickets.attachments.show', [$ticket, $attachment])); ?>"
+                                    target="_blank"
+                                    class="d-block border rounded text-decoration-none overflow-hidden"
+                                >
+                                    <img
+                                        src="<?php echo e(route('tickets.attachments.show', [$ticket, $attachment])); ?>"
+                                        alt="<?php echo e($attachment->original_name); ?>"
+                                        class="w-100"
+                                        style="height: 110px; object-fit: cover;"
+                                    >
+                                    <div class="p-2">
+                                        <div class="small fw-semibold text-dark text-truncate"><?php echo e($attachment->original_name); ?></div>
+                                        <div class="small text-muted"><?php echo e(number_format($attachment->size_bytes / 1024, 0)); ?> KB</div>
+                                    </div>
+                                </a>
+                            </div>
+                        <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?>
+                    </div>
+                <?php endif; ?>
             </div>
         </div>
 

@@ -6,12 +6,75 @@ use App\Models\Inspection;
 use App\Models\Ticket;
 use App\Models\TicketActivity;
 use App\Models\User;
+use App\Models\UserNotificationState;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
 class NotificationCenterService
 {
     public function latestForUser(User $user, int $limit = 10): Collection
+    {
+        return $this->withUserState($user, $this->candidateNotifications($user))
+            ->take($limit)
+            ->values();
+    }
+
+    public function unreadCountForUser(User $user): int
+    {
+        return $this->latestForUser($user, 99)
+            ->where('is_read', false)
+            ->count();
+    }
+
+    public function markRead(User $user, string $notificationKey): void
+    {
+        UserNotificationState::query()->updateOrCreate(
+            [
+                'user_id' => $user->id,
+                'notification_key' => $notificationKey,
+            ],
+            [
+                'notification_type' => $this->typeFromKey($notificationKey),
+                'read_at' => now(),
+            ],
+        );
+    }
+
+    public function acknowledge(User $user, string $notificationKey): void
+    {
+        $state = UserNotificationState::query()->firstOrNew([
+            'user_id' => $user->id,
+            'notification_key' => $notificationKey,
+        ]);
+
+        $state->fill([
+            'notification_type' => $state->notification_type ?: $this->typeFromKey($notificationKey),
+            'read_at' => $state->read_at ?? now(),
+            'acknowledged_at' => now(),
+        ]);
+        $state->save();
+    }
+
+    public function markAllRead(User $user, int $limit = 99): int
+    {
+        $notifications = $this->latestForUser($user, $limit)
+            ->where('is_read', false)
+            ->values();
+
+        foreach ($notifications as $notification) {
+            $this->markRead($user, $notification['key']);
+        }
+
+        return $notifications->count();
+    }
+
+    public function findForUser(User $user, string $notificationKey): ?array
+    {
+        return $this->latestForUser($user, 99)
+            ->firstWhere('key', $notificationKey);
+    }
+
+    private function candidateNotifications(User $user): Collection
     {
         $items = collect()
             ->merge($this->approvalNotifications($user))
@@ -20,14 +83,34 @@ class NotificationCenterService
             ->sortByDesc(fn (array $item) => $item['occurred_at'])
             ->values();
 
-        return $items->take($limit)->values();
+        return $items;
     }
 
-    public function unreadCountForUser(User $user): int
+    private function withUserState(User $user, Collection $notifications): Collection
     {
-        return $this->latestForUser($user, 99)
-            ->filter(fn (array $item) => $item['occurred_at']->greaterThanOrEqualTo(now()->subDays(3)))
-            ->count();
+        $keys = $notifications->pluck('key')->filter()->values();
+
+        if ($keys->isEmpty()) {
+            return $notifications;
+        }
+
+        $states = UserNotificationState::query()
+            ->where('user_id', $user->id)
+            ->whereIn('notification_key', $keys)
+            ->get()
+            ->keyBy('notification_key');
+
+        return $notifications->map(function (array $notification) use ($states): array {
+            $state = $states->get($notification['key']);
+
+            $notification['read_at'] = $state?->read_at;
+            $notification['acknowledged_at'] = $state?->acknowledged_at;
+            $notification['is_read'] = $state?->read_at !== null;
+            $notification['is_acknowledged'] = $state?->acknowledged_at !== null;
+            $notification['open_url'] = route('notifications.open', $notification['key']);
+
+            return $notification;
+        });
     }
 
     private function approvalNotifications(User $user): Collection
@@ -41,6 +124,7 @@ class NotificationCenterService
             ->get();
 
         return $tickets->map(fn (Ticket $ticket) => [
+            'key' => 'approval-ticket-'.$ticket->id,
             'title' => 'Approval needed for ' . $ticket->ticket_number,
             'message' => $ticket->title,
             'type' => 'approval',
@@ -66,6 +150,7 @@ class NotificationCenterService
             ->get();
 
         return $tickets->map(fn (Ticket $ticket) => [
+            'key' => 'assignment-ticket-'.$ticket->id,
             'title' => 'Assigned ticket ' . $ticket->ticket_number,
             'message' => ($ticket->status?->name ?? 'Open') . ' · ' . $ticket->title,
             'type' => 'assignment',
@@ -89,6 +174,10 @@ class NotificationCenterService
                 'ticket_approved',
                 'ticket_rejected',
                 'ticket_ready_for_assignment',
+                'ticket_pending_customer',
+                'ticket_closed',
+                'ticket_reopened',
+                'ticket_cancelled',
                 'sla_response_breached',
                 'sla_resolution_breached',
                 'work_completed',
@@ -97,6 +186,7 @@ class NotificationCenterService
             ->limit(10)
             ->get()
             ->map(fn (TicketActivity $activity) => [
+                'key' => 'ticket-activity-'.$activity->id,
                 'title' => $this->ticketActivityTitle($activity),
                 'message' => $activity->ticket?->title ?? 'Ticket activity',
                 'type' => 'ticket_activity',
@@ -113,6 +203,7 @@ class NotificationCenterService
             ->limit(5)
             ->get()
             ->map(fn (Inspection $inspection) => [
+                'key' => 'inspection-abnormal-'.$inspection->id,
                 'title' => 'Abnormal inspection result ' . $inspection->inspection_number,
                 'message' => 'Officer: ' . ($inspection->officer?->name ?? 'Unassigned'),
                 'type' => 'inspection',
@@ -134,6 +225,10 @@ class NotificationCenterService
             'ticket_approved' => 'Ticket approved ' . $ticketNumber,
             'ticket_rejected' => 'Ticket rejected ' . $ticketNumber,
             'ticket_ready_for_assignment' => 'Ready for assignment ' . $ticketNumber,
+            'ticket_pending_customer' => 'Pending customer ' . $ticketNumber,
+            'ticket_closed' => 'Ticket closed ' . $ticketNumber,
+            'ticket_reopened' => 'Ticket reopened ' . $ticketNumber,
+            'ticket_cancelled' => 'Ticket cancelled ' . $ticketNumber,
             'sla_response_breached' => 'Response SLA breached ' . $ticketNumber,
             'sla_resolution_breached' => 'Resolution SLA breached ' . $ticketNumber,
             'work_completed' => 'Work completed ' . $ticketNumber,
@@ -145,8 +240,9 @@ class NotificationCenterService
     {
         return match ($activityType) {
             'ticket_created' => 'primary',
-            'ticket_approved', 'work_completed' => 'success',
-            'ticket_rejected', 'sla_response_breached', 'sla_resolution_breached' => 'danger',
+            'ticket_approved', 'work_completed', 'ticket_closed' => 'success',
+            'ticket_reopened', 'ticket_pending_customer' => 'warning',
+            'ticket_rejected', 'ticket_cancelled', 'sla_response_breached', 'sla_resolution_breached' => 'danger',
             default => 'info',
         };
     }
@@ -158,9 +254,34 @@ class NotificationCenterService
             'ticket_approved' => 'solar:check-circle-outline',
             'ticket_rejected' => 'solar:close-circle-outline',
             'ticket_ready_for_assignment' => 'solar:plain-2-outline',
+            'ticket_pending_customer' => 'solar:user-block-outline',
+            'ticket_closed' => 'solar:archive-check-outline',
+            'ticket_reopened' => 'solar:restart-outline',
+            'ticket_cancelled' => 'solar:close-square-outline',
             'sla_response_breached', 'sla_resolution_breached' => 'solar:danger-triangle-outline',
             'work_completed' => 'solar:check-read-outline',
             default => 'solar:bell-bing-outline',
         };
+    }
+
+    private function typeFromKey(string $notificationKey): string
+    {
+        if (str_starts_with($notificationKey, 'approval-')) {
+            return 'approval';
+        }
+
+        if (str_starts_with($notificationKey, 'assignment-')) {
+            return 'assignment';
+        }
+
+        if (str_starts_with($notificationKey, 'ticket-activity-')) {
+            return 'ticket_activity';
+        }
+
+        if (str_starts_with($notificationKey, 'inspection-')) {
+            return 'inspection';
+        }
+
+        return 'general';
     }
 }

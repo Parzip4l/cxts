@@ -40,6 +40,8 @@ require __DIR__ . '/auth.php';
 
 Route::prefix('public')->name('public.')->group(function (): void {
     Route::get('tickets/create', [PublicTicketController::class, 'create'])->name('tickets.create');
+    Route::get('tickets/track', [PublicTicketController::class, 'track'])->name('tickets.track');
+    Route::post('tickets/track', [PublicTicketController::class, 'lookup'])->middleware('audit')->name('tickets.lookup');
     Route::post('tickets', [PublicTicketController::class, 'store'])->middleware('audit')->name('tickets.store');
 
     Route::get('inspections/create', [PublicInspectionController::class, 'create'])->name('inspections.create');
@@ -56,10 +58,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function (): void {
     Route::get('manual-guide', [ManualGuideController::class, 'index'])->name('manual-guide.index');
     Route::get('users/{user}/profile-photo', [MasterUserController::class, 'profilePhoto'])->name('users.profile-photo');
     Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.center');
+    Route::post('notifications/read-all', [NotificationController::class, 'markAllRead'])->name('notifications.read-all');
+    Route::get('notifications/{notificationKey}/open', [NotificationController::class, 'open'])->name('notifications.open');
+    Route::post('notifications/{notificationKey}/read', [NotificationController::class, 'markRead'])->name('notifications.read');
+    Route::post('notifications/{notificationKey}/acknowledge', [NotificationController::class, 'acknowledge'])->name('notifications.acknowledge');
     Route::get('audit-trail', [AuditTrailController::class, 'index'])->name('audit-trail.index')->middleware('role:super_admin');
 
     Route::prefix('dashboard')->name('dashboard.')->middleware('permission:dashboard.view_ops')->group(function (): void {
         Route::get('report', [OperationsDashboardController::class, 'report'])->name('report');
+        Route::get('report/export', [OperationsDashboardController::class, 'exportReport'])->name('report.export');
         Route::get('sla-performance', [OperationsDashboardController::class, 'slaPerformance'])->name('sla-performance');
         Route::get('engineer-effectiveness', [OperationsDashboardController::class, 'engineerEffectiveness'])->name('engineer-effectiveness');
     });
@@ -119,6 +126,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function (): void {
         Route::post('{ticket}/approve', [TicketController::class, 'approve'])->name('approve');
         Route::post('{ticket}/reject', [TicketController::class, 'reject'])->name('reject');
         Route::post('{ticket}/mark-ready', [TicketController::class, 'markReady'])->name('mark-ready');
+        Route::post('{ticket}/pending-customer', [TicketController::class, 'pendingCustomer'])->name('pending-customer');
+        Route::post('{ticket}/close', [TicketController::class, 'close'])->name('close');
+        Route::post('{ticket}/reopen', [TicketController::class, 'reopen'])->name('reopen');
+        Route::post('{ticket}/cancel', [TicketController::class, 'cancel'])->name('cancel');
         Route::post('{ticket}/assign', [TicketController::class, 'assign'])->name('assign');
         Route::get('{ticket}/attachments/{attachment}', [TicketController::class, 'showAttachment'])->name('attachments.show');
     });
@@ -132,6 +143,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function (): void {
         Route::post('{ticket}/pause', [EngineerTaskController::class, 'pause'])->name('pause');
         Route::post('{ticket}/resume', [EngineerTaskController::class, 'resume'])->name('resume');
         Route::post('{ticket}/complete', [EngineerTaskController::class, 'complete'])->name('complete');
+        Route::post('{ticket}/pending-customer', [EngineerTaskController::class, 'pendingCustomer'])->name('pending-customer');
         Route::post('{ticket}/worklogs', [EngineerTaskController::class, 'storeWorklog'])->name('worklogs.store');
     });
 

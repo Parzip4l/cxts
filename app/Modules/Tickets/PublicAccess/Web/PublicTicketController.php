@@ -7,17 +7,22 @@ use App\Models\Asset;
 use App\Models\AssetLocation;
 use App\Models\Department;
 use App\Models\ServiceCatalog;
+use App\Models\Ticket;
 use App\Models\TicketCategory;
 use App\Models\TicketDetailSubcategory;
 use App\Models\TicketPriority;
 use App\Models\TicketSubcategory;
 use App\Models\User;
 use App\Modules\Tickets\PublicAccess\Requests\StorePublicTicketRequest;
+use App\Modules\Tickets\PublicAccess\Requests\TrackPublicTicketRequest;
 use App\Modules\Tickets\Tickets\TicketService;
+use App\Notifications\PublicTicketSubmittedNotification;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
+use Throwable;
 
 class PublicTicketController extends Controller
 {
@@ -39,6 +44,41 @@ class PublicTicketController extends Controller
             'assetOptions' => Asset::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'service_id', 'asset_location_id', 'asset_category_id']),
             'locationOptions' => AssetLocation::query()->where('is_active', true)->orderBy('name')->get(['id', 'name']),
             'defaultPriorityId' => $this->resolveDefaultPriorityId($priorityOptions),
+        ]);
+    }
+
+    public function track(): View
+    {
+        $ticketNumber = session('ticket_number');
+        $requesterEmail = session('requester_email');
+        $ticket = null;
+
+        if (is_string($ticketNumber) && is_string($requesterEmail)) {
+            $ticket = $this->findPublicTicket($ticketNumber, $requesterEmail);
+        }
+
+        return view('public.tickets.track', [
+            'ticket' => $ticket,
+            'ticketNumber' => $ticketNumber,
+            'requesterEmail' => $requesterEmail,
+        ]);
+    }
+
+    public function lookup(TrackPublicTicketRequest $request): View|RedirectResponse
+    {
+        $data = $request->validated();
+        $ticket = $this->findPublicTicket($data['ticket_number'], $data['requester_email']);
+
+        if ($ticket === null) {
+            return back()
+                ->withErrors(['ticket_number' => 'Ticket tidak ditemukan untuk kombinasi nomor ticket dan email pelapor tersebut.'])
+                ->withInput();
+        }
+
+        return view('public.tickets.track', [
+            'ticket' => $ticket,
+            'ticketNumber' => $data['ticket_number'],
+            'requesterEmail' => $data['requester_email'],
         ]);
     }
 
@@ -71,9 +111,71 @@ class PublicTicketController extends Controller
             'attachments' => $data['attachments'] ?? [],
         ], $requester);
 
+        try {
+            $requester->notify(new PublicTicketSubmittedNotification($ticket));
+        } catch (Throwable $exception) {
+            Log::warning('Failed to send public ticket notification.', [
+                'ticket_id' => $ticket->id,
+                'ticket_number' => $ticket->ticket_number,
+                'requester_id' => $requester->id,
+                'error' => $exception->getMessage(),
+            ]);
+        }
+
         return redirect()
-            ->route('public.tickets.create')
-            ->with('success', "Ticket berhasil dibuat dengan nomor {$ticket->ticket_number}.");
+            ->route('public.tickets.track')
+            ->with('success', "Ticket berhasil dibuat dengan nomor {$ticket->ticket_number}. Simpan nomor ini untuk tracking status.")
+            ->with('ticket_number', $ticket->ticket_number)
+            ->with('requester_email', $requester->email);
+    }
+
+    private function findPublicTicket(string $ticketNumber, string $requesterEmail): ?Ticket
+    {
+        return Ticket::query()
+            ->with([
+                'requester:id,name,email',
+                'requesterDepartment:id,name',
+                'category:id,name',
+                'subcategory:id,name',
+                'detailSubcategory:id,name',
+                'priority:id,name',
+                'status:id,name,code',
+                'service:id,name',
+                'asset:id,name',
+                'assetLocation:id,name',
+                'assignedEngineer:id,name',
+                'activities' => fn ($query) => $query
+                    ->whereIn('activity_type', $this->publicActivityTypes())
+                    ->oldest(),
+                'activities.newStatus:id,name,code',
+            ])
+            ->where('ticket_number', $ticketNumber)
+            ->whereHas('requester', fn ($query) => $query->whereRaw('LOWER(email) = ?', [Str::lower($requesterEmail)]))
+            ->first();
+    }
+
+    /**
+     * Public tracking intentionally exposes only status-level activities.
+     *
+     * @return array<int, string>
+     */
+    private function publicActivityTypes(): array
+    {
+        return [
+            'ticket_created',
+            'ticket_approved',
+            'ticket_rejected',
+            'ticket_ready_for_assignment',
+            'ticket_assigned',
+            'work_started',
+            'work_paused',
+            'work_resumed',
+            'ticket_pending_customer',
+            'work_completed',
+            'ticket_closed',
+            'ticket_reopened',
+            'ticket_cancelled',
+        ];
     }
 
     private function findOrCreatePublicRequester(string $name, string $email, int $departmentId): User

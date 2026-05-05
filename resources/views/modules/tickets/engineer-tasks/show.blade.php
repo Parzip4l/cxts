@@ -5,11 +5,12 @@
 
 @php
     $statusCode = strtoupper((string) ($ticket->status?->code ?? ''));
-    $isTerminal = $ticket->completed_at !== null || $ticket->closed_at !== null || in_array($statusCode, ['COMPLETED', 'CLOSED'], true);
+    $isTerminal = $ticket->completed_at !== null || $ticket->closed_at !== null || in_array($statusCode, ['COMPLETED', 'CLOSED', 'CANCELLED'], true);
     $canStart = !$isTerminal && $ticket->started_at === null;
     $canPause = !$isTerminal && $ticket->started_at !== null && $ticket->paused_at === null;
     $canResume = !$isTerminal && $ticket->started_at !== null && $ticket->paused_at !== null;
     $canComplete = !$isTerminal && $ticket->started_at !== null;
+    $canPendingCustomer = !$isTerminal && $ticket->started_at !== null && $statusCode !== 'PENDING_CUSTOMER';
     $workEndedAt = $ticket->completed_at ?? $ticket->resolved_at ?? $ticket->closed_at;
     $workDurationMinutes = ($ticket->started_at && $workEndedAt) ? $ticket->started_at->diffInMinutes($workEndedAt) : null;
 @endphp
@@ -142,6 +143,20 @@
                 @if ($errors->has('action'))
                     <div class="alert alert-danger">{{ $errors->first('action') }}</div>
                 @endif
+                @if ($errors->has('notes') || $errors->has('completion_evidences') || $errors->has('completion_evidences.*'))
+                    <div class="alert alert-danger">
+                        <div class="fw-semibold mb-1">Complete Work belum bisa diproses.</div>
+                        @error('notes')
+                            <div>{{ $message }}</div>
+                        @enderror
+                        @error('completion_evidences')
+                            <div>{{ $message }}</div>
+                        @enderror
+                        @error('completion_evidences.*')
+                            <div>{{ $message }}</div>
+                        @enderror
+                    </div>
+                @endif
 
                 <div class="d-grid gap-2">
                     @if ($canStart)
@@ -169,19 +184,94 @@
                     @endif
 
                     @if ($canComplete)
-                        <form method="POST" action="{{ route('engineer-tasks.complete', $ticket) }}">
+                        <form method="POST" action="{{ route('engineer-tasks.complete', $ticket) }}" enctype="multipart/form-data" class="border rounded p-3 bg-light-subtle">
                             @csrf
-                            <input type="hidden" name="notes" value="Complete work from web panel">
-                            <button type="submit" class="btn btn-success w-100">Complete Work</button>
+                            <div class="mb-3">
+                                <label for="completion_notes" class="form-label">Resolution Notes</label>
+                                <textarea
+                                    id="completion_notes"
+                                    name="notes"
+                                    rows="3"
+                                    class="form-control @error('notes') is-invalid @enderror"
+                                    placeholder="Jelaskan tindakan perbaikan dan hasil akhirnya."
+                                    required
+                                >{{ old('notes') }}</textarea>
+                                @error('notes')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+                            <div class="mb-3">
+                                <label for="completion_evidences" class="form-label">Completion Evidence</label>
+                                <input
+                                    type="file"
+                                    id="completion_evidences"
+                                    name="completion_evidences[]"
+                                    class="form-control @error('completion_evidences') is-invalid @enderror @error('completion_evidences.*') is-invalid @enderror"
+                                    accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                                    multiple
+                                    required
+                                >
+                                <div class="form-text">Wajib minimal 1 foto. Maksimal 5 foto, masing-masing 5MB. Format: JPG, PNG, WEBP.</div>
+                                @error('completion_evidences')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                                @error('completion_evidences.*')
+                                    <div class="invalid-feedback d-block">{{ $message }}</div>
+                                @enderror
+                            </div>
+                            <button type="submit" class="btn btn-success w-100">Complete Work With Evidence</button>
                         </form>
                     @endif
 
-                    @if (! $canStart && ! $canPause && ! $canResume && ! $canComplete)
+                    @if ($canPendingCustomer)
+                        <form method="POST" action="{{ route('engineer-tasks.pending-customer', $ticket) }}">
+                            @csrf
+                            <input type="hidden" name="notes" value="Waiting confirmation or follow-up from customer">
+                            <button type="submit" class="btn btn-outline-warning w-100">Pending Customer</button>
+                        </form>
+                    @endif
+
+                    @if (! $canStart && ! $canPause && ! $canResume && ! $canComplete && ! $canPendingCustomer)
                         <div class="alert alert-light border mb-0">
                             Tidak ada aksi transisi yang tersedia untuk status task saat ini.
                         </div>
                     @endif
                 </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">Evidence & Attachments</h5>
+                <span class="badge bg-light text-muted border">{{ $ticket->attachments->count() }} file(s)</span>
+            </div>
+            <div class="card-body">
+                @if ($ticket->attachments->isEmpty())
+                    <p class="text-muted mb-0">Belum ada evidence atau lampiran foto.</p>
+                @else
+                    <div class="row g-2">
+                        @foreach ($ticket->attachments as $attachment)
+                            <div class="col-6">
+                                <a
+                                    href="{{ route('tickets.attachments.show', [$ticket, $attachment]) }}"
+                                    target="_blank"
+                                    class="d-block border rounded text-decoration-none overflow-hidden"
+                                >
+                                    <img
+                                        src="{{ route('tickets.attachments.show', [$ticket, $attachment]) }}"
+                                        alt="{{ $attachment->original_name }}"
+                                        class="w-100"
+                                        style="height: 110px; object-fit: cover;"
+                                    >
+                                    <div class="p-2">
+                                        <div class="small fw-semibold text-dark text-truncate">{{ $attachment->original_name }}</div>
+                                        <div class="small text-muted">{{ number_format($attachment->size_bytes / 1024, 0) }} KB</div>
+                                    </div>
+                                </a>
+                            </div>
+                        @endforeach
+                    </div>
+                @endif
             </div>
         </div>
 

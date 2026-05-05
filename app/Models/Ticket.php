@@ -214,6 +214,30 @@ class Ticket extends Model
         return $this->approval_status === self::APPROVAL_STATUS_REJECTED;
     }
 
+    public function statusCode(): ?string
+    {
+        $code = $this->relationLoaded('status')
+            ? $this->status?->code
+            : TicketStatus::query()->whereKey($this->ticket_status_id)->value('code');
+
+        if (! is_string($code) || $code === '') {
+            return null;
+        }
+
+        return strtoupper($code);
+    }
+
+    public function hasStatus(string ...$codes): bool
+    {
+        $statusCode = $this->statusCode();
+
+        if ($statusCode === null) {
+            return false;
+        }
+
+        return in_array($statusCode, array_map(fn ($code) => strtoupper((string) $code), $codes), true);
+    }
+
     public function isAssignmentReady(): bool
     {
         if (! $this->requires_approval && $this->allow_direct_assignment) {
@@ -256,6 +280,10 @@ class Ticket extends Model
 
     public function canBeAssigned(): bool
     {
+        if ($this->isTerminalLifecycle()) {
+            return false;
+        }
+
         if ($this->isRejected()) {
             return false;
         }
@@ -273,6 +301,18 @@ class Ticket extends Model
 
     public function assignmentGateMessage(): ?string
     {
+        if ($this->isCompleted()) {
+            return 'Ticket ini sudah completed dan menunggu close atau reopen.';
+        }
+
+        if ($this->isClosed()) {
+            return 'Ticket ini sudah closed dan tidak bisa di-assign ulang sebelum di-reopen.';
+        }
+
+        if ($this->isCancelled()) {
+            return 'Ticket ini sudah dibatalkan dan tidak bisa di-assign.';
+        }
+
         if ($this->isRejected()) {
             return 'Ticket ini sudah ditolak dan belum bisa di-assign.';
         }
@@ -313,5 +353,38 @@ class Ticket extends Model
         }
 
         return in_array((string) $user->role, ['super_admin', 'operational_admin', 'supervisor'], true);
+    }
+
+    public function isPendingCustomer(): bool
+    {
+        return $this->hasStatus('PENDING_CUSTOMER');
+    }
+
+    public function isCompleted(): bool
+    {
+        return $this->completed_at !== null || $this->hasStatus('COMPLETED');
+    }
+
+    public function isClosed(): bool
+    {
+        return ($this->closed_at !== null && ! $this->isCancelled()) || $this->hasStatus('CLOSED');
+    }
+
+    public function isCancelled(): bool
+    {
+        return $this->hasStatus('CANCELLED');
+    }
+
+    public function isTerminalLifecycle(): bool
+    {
+        if ($this->completed_at !== null) {
+            return true;
+        }
+
+        if ($this->closed_at !== null && ! $this->isPendingCustomer()) {
+            return true;
+        }
+
+        return $this->hasStatus('COMPLETED', 'CLOSED', 'REJECTED', 'CANCELLED');
     }
 }
