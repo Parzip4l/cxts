@@ -13,6 +13,7 @@ use App\Models\TicketWorklog;
 use App\Models\User;
 use App\Services\SLA\SLAResolverService;
 use App\Services\SLA\SLATrackingService;
+use App\Services\Notifications\FirebasePushService;
 use App\Services\Tickets\TicketFlowPolicyResolverService;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -41,6 +42,7 @@ class TicketService
         private readonly SLAResolverService $slaResolver,
         private readonly SLATrackingService $slaTracking,
         private readonly TicketFlowPolicyResolverService $ticketFlowPolicyResolver,
+        private readonly FirebasePushService $firebasePushService,
     ) {
     }
 
@@ -160,6 +162,8 @@ class TicketService
 
             $this->storeAttachments($ticket, $data['attachments'] ?? [], $actor);
 
+            DB::afterCommit(fn () => $this->firebasePushService->sendTicketCreated($ticket->fresh($this->ticketRelations())));
+
             return $this->syncSlaState($ticket, $actor, $now)->fresh($this->ticketRelations());
         });
     }
@@ -235,6 +239,8 @@ class TicketService
                     'notes' => $notes,
                 ]
             );
+
+            DB::afterCommit(fn () => $this->firebasePushService->sendTicketAssigned($ticket->fresh($this->ticketRelations())));
 
             return $ticket->fresh($this->ticketRelations());
         });
@@ -479,6 +485,8 @@ class TicketService
                 'notes' => $notes,
                 'evidence_count' => count($completionEvidences),
             ]);
+
+            DB::afterCommit(fn () => $this->firebasePushService->sendTicketCompleted($ticket->fresh($this->ticketRelations())));
 
             return $this->syncSlaState($ticket, $actor, $completedAt)->fresh($this->ticketRelations());
         });

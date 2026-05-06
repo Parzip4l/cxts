@@ -18,7 +18,7 @@ import 'package:sqflite/sqflite.dart';
 
 const String kApiBaseUrl = String.fromEnvironment(
   'API_BASE_URL',
-  defaultValue: 'http://10.0.2.2:8000/api/v1',
+  defaultValue: 'https://cxts-demo.gm-tekno.com/api/v1',
 );
 
 void main() async {
@@ -94,6 +94,10 @@ class _EngineeringMobileAppState extends State<EngineeringMobileApp> {
 
   Future<void> _bootstrap() async {
     await _session.bootstrap();
+    await PushTokenBootstrapper.captureTokenOnAppOpen();
+    if (_session.isAuthenticated) {
+      await _api.autoRegisterPushToken();
+    }
     if (!mounted) return;
     setState(() => _bootstrapped = true);
   }
@@ -187,7 +191,7 @@ class _EngineeringMobileAppState extends State<EngineeringMobileApp> {
         ),
       ),
       home: !_bootstrapped
-          ? const Scaffold(body: Center(child: CircularProgressIndicator()))
+          ? const AppSplashScreen()
           : AnimatedBuilder(
               animation: _session,
               builder: (context, _) {
@@ -811,6 +815,7 @@ class ApiRepository {
     final userMap = _asMap(map['user']);
     final user = UserProfile.fromJson(userMap);
     await _session.saveSession(token, user);
+    await autoRegisterPushToken();
     return user;
   }
 
@@ -1143,7 +1148,7 @@ class ApiRepository {
   Future<void> autoRegisterPushToken() async {
     try {
       final messaging = FirebaseMessaging.instance;
-      if (!kIsWeb && Platform.isIOS) {
+      if (!kIsWeb) {
         await messaging.requestPermission(
           alert: true,
           badge: true,
@@ -1151,11 +1156,14 @@ class ApiRepository {
         );
       }
 
-      final token = await messaging.getToken();
+      final token =
+          await messaging.getToken() ??
+          await PushTokenBootstrapper.pendingToken();
       if (token == null || token.isEmpty) {
         return;
       }
 
+      await PushTokenBootstrapper.persistToken(token);
       final packageInfo = await PackageInfo.fromPlatform();
       await registerDeviceToken(
         token: token,
@@ -1166,6 +1174,7 @@ class ApiRepository {
 
       messaging.onTokenRefresh.listen((newToken) async {
         try {
+          await PushTokenBootstrapper.persistToken(newToken);
           await registerDeviceToken(
             token: newToken,
             platform: _currentPlatform(),
@@ -1336,6 +1345,39 @@ class ApiRepository {
   }
 }
 
+class PushTokenBootstrapper {
+  static const String _pendingFcmTokenKey = 'pending_fcm_token';
+
+  static Future<void> captureTokenOnAppOpen() async {
+    try {
+      if (!kIsWeb) {
+        await FirebaseMessaging.instance.requestPermission(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
+      }
+
+      final token = await FirebaseMessaging.instance.getToken();
+      if (token != null && token.isNotEmpty) {
+        await persistToken(token);
+      }
+    } catch (_) {
+      // Firebase config may be absent on local builds; login flow will retry.
+    }
+  }
+
+  static Future<void> persistToken(String token) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_pendingFcmTokenKey, token);
+  }
+
+  static Future<String?> pendingToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_pendingFcmTokenKey);
+  }
+}
+
 // ==========================================
 // SCREENS & WIDGETS (MODERNIZED)
 // ==========================================
@@ -1476,15 +1518,6 @@ class _LoginPageState extends State<LoginPage> {
                                 ),
                               )
                             : const Text('Sign In'),
-                      ),
-                      const SizedBox(height: 24),
-                      Text(
-                        'API: $kApiBaseUrl',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: AppColors.textSecondary.withOpacity(0.5),
-                        ),
                       ),
                     ],
                   ),
@@ -1657,33 +1690,7 @@ class _HomeShellState extends State<HomeShell> {
       appBar: AppBar(
         toolbarHeight: 70,
         titleSpacing: 20,
-        title: Row(
-          children: <Widget>[
-            const HeaderLogoPlaceholder(size: 36),
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  'CXTS',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-                Text(
-                  items[_selectedIndex].title,
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
+        title: Row(children: <Widget>[const HeaderLogoPlaceholder(size: 36)]),
         actions: <Widget>[
           IconButton(
             onPressed: _openNotifications,
@@ -4445,22 +4452,6 @@ class _MobileNotificationsPageState extends State<MobileNotificationsPage> {
                 padding: const EdgeInsets.all(20),
                 children: <Widget>[
                   ModernCard(
-                    title: 'Push Notifications',
-                    child: Column(
-                      children: [
-                        const InfoTile(
-                          label: 'Mode',
-                          value: 'Auto-registered on device login',
-                        ),
-                        const InfoTile(
-                          label: 'Source',
-                          value: 'Firebase Messaging Token',
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  ModernCard(
                     title: 'Recent Notifications',
                     child: _notifications.isEmpty
                         ? const Text('Belum ada notifikasi.')
@@ -4706,25 +4697,35 @@ class HeaderLogoPlaceholder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: size,
+    return SizedBox(
+      width: size * 1.5,
       height: size,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(size * 0.3),
-        gradient: const LinearGradient(
-          colors: [AppColors.primary, AppColors.primaryLight],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+      child: Image.asset('assets/images/cxts.png', fit: BoxFit.contain),
+    );
+  }
+}
+
+class AppSplashScreen extends StatelessWidget {
+  const AppSplashScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      backgroundColor: AppColors.background,
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            HeaderLogoPlaceholder(size: 112),
+            SizedBox(height: 24),
+            SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2.5),
+            ),
+          ],
         ),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withOpacity(0.3),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
       ),
-      child: Icon(Icons.hexagon_rounded, color: Colors.white, size: size * 0.6),
     );
   }
 }

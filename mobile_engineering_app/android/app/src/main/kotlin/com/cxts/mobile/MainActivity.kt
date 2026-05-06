@@ -1,4 +1,4 @@
-package com.example.mobile_engineering_app
+package com.cxts.mobile
 
 import io.flutter.embedding.android.FlutterActivity
 

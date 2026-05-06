@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "91701198712",
+    "project_id": "cxts-c8854",
+    "storage_bucket": "cxts-c8854.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:91701198712:android:ed201c22ab6ecee8bc528d",
+        "android_client_info": {
+          "package_name": "com.cxts.mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBDeeZlGvCqHGMhOJPNRBj0A6XmD3uHzdU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
