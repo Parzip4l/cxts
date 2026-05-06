@@ -15,6 +15,8 @@ class StoreTicketRequest extends FormRequest
 
     public function rules(): array
     {
+        $engineerRule = Rule::exists('users', 'id')->where(fn ($query) => $query->where('role', 'engineer'));
+
         return [
             'title' => ['required', 'string', 'max:200'],
             'description' => ['required', 'string'],
@@ -31,6 +33,10 @@ class StoreTicketRequest extends FormRequest
             'source' => ['nullable', 'string', 'max:30'],
             'impact' => ['nullable', 'string', 'max:30'],
             'urgency' => ['nullable', 'string', 'max:30'],
+            'assigned_engineer_ids' => ['nullable', 'array', 'min:1'],
+            'assigned_engineer_ids.*' => ['integer', 'distinct', $engineerRule],
+            'assigned_team_name' => ['nullable', 'string', 'max:100'],
+            'assignment_notes' => ['nullable', 'string'],
             'attachments' => ['nullable', 'array', 'max:5'],
             'attachments.*' => ['bail', 'file', 'image', 'mimetypes:image/jpeg,image/png,image/webp', 'extensions:jpg,jpeg,png,webp', 'max:5120'],
         ];

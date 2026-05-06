@@ -6,6 +6,7 @@ use App\Models\Ticket;
 use App\Models\TicketActivity;
 use App\Models\TicketAttachment;
 use App\Models\TicketAssignment;
+use App\Models\TicketEngineerAssignment;
 use App\Models\TicketCategory;
 use App\Models\TicketStatus;
 use App\Models\TicketWorklog;
@@ -59,6 +60,7 @@ class TicketService
                 'assetLocation:id,name',
                 'inspection:id,inspection_number',
                 'assignedEngineer:id,name',
+                'assignedEngineers:id,name',
                 'expectedApprover:id,name',
             ])
             ->when($filters['search'] ?? null, function ($query, $search) {
@@ -73,12 +75,18 @@ class TicketService
             ->when($filters['ticket_category_id'] ?? null, fn ($query, $categoryId) => $query->where('ticket_category_id', $categoryId))
             ->when($filters['ticket_subcategory_id'] ?? null, fn ($query, $subcategoryId) => $query->where('ticket_subcategory_id', $subcategoryId))
             ->when($filters['ticket_detail_subcategory_id'] ?? null, fn ($query, $detailSubcategoryId) => $query->where('ticket_detail_subcategory_id', $detailSubcategoryId))
-            ->when($filters['assigned_engineer_id'] ?? null, fn ($query, $engineerId) => $query->where('assigned_engineer_id', $engineerId))
+            ->when($filters['assigned_engineer_id'] ?? null, function ($query, $engineerId): void {
+                $query->where(function ($scopedQuery) use ($engineerId): void {
+                    $scopedQuery->where('assigned_engineer_id', $engineerId)
+                        ->orWhereHas('assignedEngineers', fn ($engineerQuery) => $engineerQuery->whereKey($engineerId));
+                });
+            })
             ->when($filters['expected_approver_id'] ?? null, fn ($query, $approverId) => $query->where('expected_approver_id', $approverId))
             ->when($filters['expected_approver_role_code'] ?? null, fn ($query, $roleCode) => $query->where('expected_approver_role_code', $roleCode))
             ->when($filters['approval_status'] ?? null, fn ($query, $approvalStatus) => $query->where('approval_status', $approvalStatus))
             ->when(($filters['assignment_queue'] ?? null) === 'ready', function ($query) {
                 $query->whereNull('assigned_engineer_id')
+                    ->whereDoesntHave('assignedEngineers')
                     ->whereNotNull('assignment_ready_at');
             });
 
@@ -156,31 +164,62 @@ class TicketService
         });
     }
 
-    public function assign(Ticket $ticket, User $assignedEngineer, ?User $actor = null, ?string $teamName = null, ?string $notes = null): Ticket
+    public function assign(Ticket $ticket, User|iterable $assignedEngineers, ?User $actor = null, ?string $teamName = null, ?string $notes = null): Ticket
     {
         $this->ensureCanAssign($ticket);
+        $engineers = $this->normalizeAssignedEngineers($assignedEngineers);
 
-        return DB::transaction(function () use ($ticket, $assignedEngineer, $actor, $teamName, $notes): Ticket {
+        if ($engineers->isEmpty()) {
+            throw ValidationException::withMessages([
+                'assigned_engineer_ids' => ['Minimal satu engineer harus dipilih.'],
+            ]);
+        }
+
+        return DB::transaction(function () use ($ticket, $engineers, $actor, $teamName, $notes): Ticket {
             $assignedStatus = $this->findStatusByCode(self::STATUS_ASSIGNED);
             $oldStatusId = $ticket->ticket_status_id;
             $previousEngineerId = $ticket->assigned_engineer_id;
+            $primaryEngineer = $engineers->first();
+            $scoreShare = round(1 / max(1, $engineers->count()), 4);
+            $assignedAt = now();
+            $engineerIds = $engineers->pluck('id')->map(fn ($id) => (int) $id)->values();
 
             $ticket->update([
-                'assigned_engineer_id' => $assignedEngineer->id,
+                'assigned_engineer_id' => $primaryEngineer->id,
                 'assigned_team_name' => $teamName,
                 'ticket_status_id' => $assignedStatus?->id ?? $ticket->ticket_status_id,
                 'updated_by_id' => $actor?->id,
                 'last_status_changed_at' => now(),
             ]);
 
-            TicketAssignment::query()->create([
-                'ticket_id' => $ticket->id,
-                'previous_engineer_id' => $previousEngineerId,
-                'assigned_engineer_id' => $assignedEngineer->id,
-                'assigned_by_id' => $actor?->id,
-                'assigned_at' => now(),
-                'notes' => $notes,
-            ]);
+            TicketEngineerAssignment::query()
+                ->where('ticket_id', $ticket->id)
+                ->whereNotIn('engineer_id', $engineerIds->all())
+                ->delete();
+
+            foreach ($engineers as $engineer) {
+                TicketEngineerAssignment::query()->updateOrCreate(
+                    [
+                        'ticket_id' => $ticket->id,
+                        'engineer_id' => $engineer->id,
+                    ],
+                    [
+                        'assigned_by_id' => $actor?->id,
+                        'team_name' => $teamName,
+                        'score_share' => $scoreShare,
+                        'assigned_at' => $assignedAt,
+                    ]
+                );
+
+                TicketAssignment::query()->create([
+                    'ticket_id' => $ticket->id,
+                    'previous_engineer_id' => $previousEngineerId,
+                    'assigned_engineer_id' => $engineer->id,
+                    'assigned_by_id' => $actor?->id,
+                    'assigned_at' => $assignedAt,
+                    'notes' => $notes,
+                ]);
+            }
 
             $this->logActivity(
                 ticket: $ticket,
@@ -189,7 +228,9 @@ class TicketService
                 oldStatusId: $oldStatusId,
                 newStatusId: $assignedStatus?->id,
                 metadata: [
-                    'assigned_engineer_id' => $assignedEngineer->id,
+                    'assigned_engineer_id' => $primaryEngineer->id,
+                    'assigned_engineer_ids' => $engineerIds->all(),
+                    'score_share_per_engineer' => $scoreShare,
                     'assigned_team_name' => $teamName,
                     'notes' => $notes,
                 ]
@@ -644,6 +685,18 @@ class TicketService
         return $status;
     }
 
+    private function normalizeAssignedEngineers(User|iterable $assignedEngineers): \Illuminate\Support\Collection
+    {
+        $engineers = $assignedEngineers instanceof User
+            ? collect([$assignedEngineers])
+            : collect($assignedEngineers);
+
+        return $engineers
+            ->filter(fn ($engineer) => $engineer instanceof User && $engineer->role === 'engineer')
+            ->unique('id')
+            ->values();
+    }
+
     private function ensureCanStartWork(Ticket $ticket): void
     {
         if ($this->isTerminalStatus($ticket)) {
@@ -882,7 +935,8 @@ class TicketService
             }
 
             if ($actor->hasPermission('ticket.view_assigned')) {
-                $scopedQuery->orWhere('tickets.assigned_engineer_id', $actor->id);
+                $scopedQuery->orWhere('tickets.assigned_engineer_id', $actor->id)
+                    ->orWhereHas('assignedEngineers', fn ($engineerQuery) => $engineerQuery->whereKey($actor->id));
                 $hasScope = true;
             }
 
@@ -1061,6 +1115,7 @@ class TicketService
             'assetLocation:id,name',
             'inspection:id,inspection_number',
             'assignedEngineer:id,name',
+            'assignedEngineers:id,name',
             'expectedApprover:id,name',
             'approvedBy:id,name',
             'rejectedBy:id,name',

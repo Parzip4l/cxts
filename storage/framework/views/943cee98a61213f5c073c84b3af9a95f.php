@@ -197,7 +197,7 @@
                             <li class="sub-nav-item"><a class="sub-nav-link" href="<?php echo e(route('engineer-tasks.index')); ?>">My Tasks</a></li>
                             <li class="sub-nav-item"><a class="sub-nav-link" href="<?php echo e(route('engineer-tasks.history')); ?>">Task History</a></li>
                             <li class="sub-nav-item"><a class="sub-nav-link" href="<?php echo e(route('engineer-tasks.schedule')); ?>">My Schedule</a></li>
-                            <li class="sub-nav-item"><a class="sub-nav-link" href="<?php echo e(route('engineer-performance')); ?>">My Performance</a></li>
+                            <li class="sub-nav-item"><a class="sub-nav-link" href="<?php echo e(route('engineer-performance')); ?>">My Scoring Report</a></li>
                         </ul>
                     </div>
                 </li>

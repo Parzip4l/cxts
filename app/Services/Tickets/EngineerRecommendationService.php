@@ -4,6 +4,7 @@ namespace App\Services\Tickets;
 
 use App\Models\EngineerSchedule;
 use App\Models\Ticket;
+use App\Models\TicketEngineerAssignment;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Arr;
@@ -61,14 +62,14 @@ class EngineerRecommendationService
             ->get()
             ->keyBy('user_id');
 
-        $workloadByEngineer = Ticket::query()
-            ->selectRaw('assigned_engineer_id, COUNT(*) as open_ticket_count')
-            ->whereNotNull('assigned_engineer_id')
-            ->whereKeyNot($ticket->id)
-            ->whereNull('closed_at')
-            ->whereNull('completed_at')
-            ->groupBy('assigned_engineer_id')
-            ->pluck('open_ticket_count', 'assigned_engineer_id');
+        $workloadByEngineer = TicketEngineerAssignment::query()
+            ->join('tickets', 'tickets.id', '=', 'ticket_engineer_assignments.ticket_id')
+            ->selectRaw('ticket_engineer_assignments.engineer_id, COUNT(*) as open_ticket_count')
+            ->where('tickets.id', '!=', $ticket->id)
+            ->whereNull('tickets.closed_at')
+            ->whereNull('tickets.completed_at')
+            ->groupBy('ticket_engineer_assignments.engineer_id')
+            ->pluck('open_ticket_count', 'ticket_engineer_assignments.engineer_id');
 
         $engineersWithMeta = $this->appendRecommendationMeta(
             $engineers,

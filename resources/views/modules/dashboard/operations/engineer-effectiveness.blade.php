@@ -26,7 +26,7 @@
             <div class="card">
                 <div class="card-body">
                     <p class="text-muted mb-1">Assigned Tickets</p>
-                    <h3 class="mb-0">{{ number_format($summary['total_assigned_tickets']) }}</h3>
+                    <h3 class="mb-0">{{ number_format($summary['total_assigned_tickets'], 2) }}</h3>
                 </div>
             </div>
         </div>
@@ -121,8 +121,8 @@
                                 <div>{{ $engineer['engineer_name'] }}</div>
                                 <small class="text-muted">{{ $engineer['department_name'] ?? '-' }}</small>
                             </td>
-                            <td>{{ number_format($engineer['assigned_tickets']) }}</td>
-                            <td>{{ number_format($engineer['completed_tickets']) }}</td>
+                            <td>{{ number_format($engineer['assigned_tickets'], 2) }}</td>
+                            <td>{{ number_format($engineer['completed_tickets'], 2) }}</td>
                             <td>{{ number_format($engineer['completion_rate'], 2) }}%</td>
                             <td>{{ number_format($engineer['response_compliance_rate'], 2) }}%</td>
                             <td>{{ number_format($engineer['resolution_compliance_rate'], 2) }}%</td>

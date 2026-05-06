@@ -5,6 +5,7 @@ namespace App\Modules\Engineering\Web;
 use App\Http\Controllers\Controller;
 use App\Models\EngineerSchedule;
 use App\Models\Ticket;
+use App\Models\TicketEngineerAssignment;
 use App\Models\TicketStatus;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -53,20 +54,20 @@ class EngineeringController extends Controller
 
         $engineerIds = $engineers->pluck('id');
 
-        $ticketLoad = Ticket::query()
-            ->selectRaw('assigned_engineer_id, COUNT(*) as active_ticket_count')
+        $ticketLoad = TicketEngineerAssignment::query()
+            ->selectRaw('ticket_engineer_assignments.engineer_id, COUNT(*) as active_ticket_count')
             ->selectRaw('SUM(CASE WHEN ticket_statuses.is_in_progress IS TRUE THEN 1 ELSE 0 END) as in_progress_ticket_count')
+            ->join('tickets', 'tickets.id', '=', 'ticket_engineer_assignments.ticket_id')
             ->join('ticket_statuses', 'ticket_statuses.id', '=', 'tickets.ticket_status_id')
-            ->whereNotNull('assigned_engineer_id')
-            ->when($engineerIds->isNotEmpty(), fn ($query) => $query->whereIn('assigned_engineer_id', $engineerIds))
+            ->when($engineerIds->isNotEmpty(), fn ($query) => $query->whereIn('ticket_engineer_assignments.engineer_id', $engineerIds))
             ->when($engineerIds->isEmpty(), fn ($query) => $query->whereRaw('1 = 0'))
             ->where(function ($query): void {
                 $query->whereRaw('ticket_statuses.is_open IS TRUE')
                     ->orWhereRaw('ticket_statuses.is_in_progress IS TRUE');
             })
-            ->groupBy('assigned_engineer_id')
+            ->groupBy('ticket_engineer_assignments.engineer_id')
             ->get()
-            ->keyBy('assigned_engineer_id');
+            ->keyBy('engineer_id');
 
         $cards = $engineers->map(function (User $engineer) use ($ticketLoad) {
             $todaySchedule = $engineer->engineerSchedules->first();
@@ -157,6 +158,7 @@ class EngineeringController extends Controller
 
         $readyTickets = $this->dispatchTicketQuery($user)
             ->whereNull('assigned_engineer_id')
+            ->whereDoesntHave('assignedEngineers')
             ->whereNotNull('assignment_ready_at')
             ->orderByDesc('assignment_ready_at')
             ->limit(8)
@@ -203,6 +205,7 @@ class EngineeringController extends Controller
             'summary' => [
                 'ready_assignment' => $this->dispatchTicketQuery($user)
                     ->whereNull('assigned_engineer_id')
+                    ->whereDoesntHave('assignedEngineers')
                     ->whereNotNull('assignment_ready_at')
                     ->count(),
                 'pending_customer' => $statusIds->has('PENDING_CUSTOMER')

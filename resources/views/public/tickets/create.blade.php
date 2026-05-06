@@ -219,7 +219,7 @@
                                                 accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
                                                 multiple
                                             >
-                                            <div class="form-text">Opsional. Maksimal 5 foto, masing-masing maksimal 5MB. Format yang diizinkan: JPG, PNG, WEBP.</div>
+                                            <div class="form-text">Maksimal 1MB. Format yang diizinkan: JPG, PNG, WEBP</div>
                                             @error('attachments')
                                                 <div class="invalid-feedback">{{ $message }}</div>
                                             @enderror

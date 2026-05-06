@@ -24,7 +24,10 @@ class EngineerTaskService
                 'asset:id,name',
                 'assetLocation:id,name',
             ])
-            ->where('assigned_engineer_id', $engineer->id)
+            ->where(function ($query) use ($engineer): void {
+                $query->where('assigned_engineer_id', $engineer->id)
+                    ->orWhereHas('assignedEngineers', fn ($engineerQuery) => $engineerQuery->whereKey($engineer->id));
+            })
             ->when($filters['search'] ?? null, function ($query, $search) {
                 $query->where(function ($subQuery) use ($search) {
                     $subQuery->where('ticket_number', 'like', "%{$search}%")
@@ -39,7 +42,7 @@ class EngineerTaskService
 
     public function ensureOwnedByEngineer(Ticket $ticket, User $engineer): void
     {
-        if ((int) $ticket->assigned_engineer_id !== (int) $engineer->id) {
+        if (! $ticket->isAssignedTo($engineer)) {
             throw new AccessDeniedHttpException('Task is not assigned to this engineer.');
         }
     }
@@ -92,7 +95,10 @@ class EngineerTaskService
 
         return Ticket::query()
             ->with(['status:id,name,code', 'category:id,name', 'priority:id,name'])
-            ->where('assigned_engineer_id', $engineer->id)
+            ->where(function ($query) use ($engineer): void {
+                $query->where('assigned_engineer_id', $engineer->id)
+                    ->orWhereHas('assignedEngineers', fn ($engineerQuery) => $engineerQuery->whereKey($engineer->id));
+            })
             ->whereHas('status', fn ($query) => $query->whereIn('code', $closedStatusCodes))
             ->orderByDesc('updated_at')
             ->paginate($perPage)

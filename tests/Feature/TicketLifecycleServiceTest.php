@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Department;
 use App\Models\Ticket;
 use App\Models\TicketCategory;
+use App\Models\TicketEngineerAssignment;
 use App\Models\TicketPriority;
 use App\Models\TicketStatus;
 use App\Models\TicketSubcategory;
@@ -138,5 +139,78 @@ class TicketLifecycleServiceTest extends TestCase
             'ticket_id' => $assignedTicket->id,
             'activity_type' => 'ticket_cancelled',
         ]);
+    }
+
+    public function test_service_can_assign_multiple_engineers_with_equal_score_share(): void
+    {
+        $department = Department::query()->create([
+            'code' => 'DEP-MULTI-ASSIGN',
+            'name' => 'Multi Assign Department',
+            'is_active' => true,
+        ]);
+
+        $actor = User::factory()->create([
+            'email' => 'multi.assign.actor@example.com',
+            'role' => 'super_admin',
+            'department_id' => $department->id,
+        ]);
+
+        $requester = User::factory()->create([
+            'email' => 'multi.assign.requester@example.com',
+            'role' => 'requester',
+            'department_id' => $department->id,
+        ]);
+
+        $engineerOne = User::factory()->create([
+            'email' => 'multi.assign.engineer.one@example.com',
+            'role' => 'engineer',
+            'department_id' => $department->id,
+        ]);
+
+        $engineerTwo = User::factory()->create([
+            'email' => 'multi.assign.engineer.two@example.com',
+            'role' => 'engineer',
+            'department_id' => $department->id,
+        ]);
+
+        $new = TicketStatus::query()->create(['code' => 'NEW', 'name' => 'New', 'is_open' => true, 'is_active' => true]);
+        $assigned = TicketStatus::query()->create(['code' => 'ASSIGNED', 'name' => 'Assigned', 'is_open' => true, 'is_active' => true]);
+
+        $ticket = Ticket::query()->create([
+            'ticket_number' => 'TCK-MULTI-0001',
+            'title' => 'Ticket handled by two engineers',
+            'description' => 'Verify equal scoring share for multiple engineers.',
+            'requester_id' => $requester->id,
+            'requester_department_id' => $department->id,
+            'ticket_status_id' => $new->id,
+            'requires_approval' => false,
+            'allow_direct_assignment' => true,
+            'approval_status' => Ticket::APPROVAL_STATUS_NOT_REQUIRED,
+            'source' => 'test',
+            'impact' => 'medium',
+            'urgency' => 'medium',
+        ]);
+
+        $updated = app(TicketService::class)->assign(
+            $ticket,
+            collect([$engineerOne, $engineerTwo]),
+            $actor,
+            'Joint Field Team',
+            'Handle together.'
+        );
+
+        $this->assertSame($assigned->id, $updated->ticket_status_id);
+        $this->assertSame($engineerOne->id, $updated->assigned_engineer_id);
+        $this->assertTrue($updated->isAssignedTo($engineerOne));
+        $this->assertTrue($updated->isAssignedTo($engineerTwo));
+
+        $assignments = TicketEngineerAssignment::query()
+            ->where('ticket_id', $ticket->id)
+            ->orderBy('engineer_id')
+            ->get();
+
+        $this->assertCount(2, $assignments);
+        $this->assertEquals(0.5, (float) $assignments[0]->score_share);
+        $this->assertEquals(0.5, (float) $assignments[1]->score_share);
     }
 }

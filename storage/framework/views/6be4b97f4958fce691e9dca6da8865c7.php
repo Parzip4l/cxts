@@ -6,6 +6,12 @@
     $ticketAgeHours = $ticket->created_at ? $ticket->created_at->diffInHours(now()) : null;
     $responseRiskLabel = null;
     $currentUser = auth()->user();
+    $activeAssignedEngineers = $ticket->assignedEngineers->isNotEmpty()
+        ? $ticket->assignedEngineers
+        : collect([$ticket->assignedEngineer])->filter();
+    $selectedAssignedEngineerIds = collect(old('assigned_engineer_ids', $activeAssignedEngineers->pluck('id')->all()))
+        ->map(fn ($id) => (string) $id)
+        ->all();
     $statusCode = strtoupper((string) ($ticket->status?->code ?? ''));
     $approvalActivities = $ticket->activities->filter(fn ($activity) => in_array($activity->activity_type, ['ticket_approved', 'ticket_rejected', 'ticket_ready_for_assignment'], true))->values();
     $lifecycleActivities = $ticket->activities->filter(fn ($activity) => in_array($activity->activity_type, ['ticket_pending_customer', 'ticket_closed', 'ticket_reopened', 'ticket_cancelled'], true))->values();
@@ -136,6 +142,23 @@
             'recommendation_score' => (int) ($option->recommendation_score ?? 0),
         ];
     };
+    $engineerInitials = function ($name) {
+        $parts = collect(preg_split('/\s+/', trim((string) $name)) ?: [])
+            ->filter()
+            ->take(2)
+            ->map(fn ($part) => mb_strtoupper(mb_substr($part, 0, 1)));
+
+        return $parts->implode('') ?: '?';
+    };
+    $scoreShareLabel = function ($engineer) {
+        $scoreShare = $engineer->pivot?->score_share;
+
+        if ($scoreShare === null) {
+            return null;
+        }
+
+        return number_format((float) $scoreShare * 100, 0) . '% score';
+    };
 ?>
 
 <div class="row g-3">
@@ -177,29 +200,54 @@
                         </div>
                     </div>
 
-                    <div class="row g-3">
-                        <div class="col-md-3">
-                            <div class="rounded-3 border bg-white p-3 h-100">
-                                <div class="small text-muted mb-1">Current Owner</div>
-                                <div class="fw-semibold"><?php echo e($ticket->assignedEngineer?->name ?? 'Unassigned'); ?></div>
+                    <div class="assigned-engineer-section">
+                        <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-2">
+                            <div>
+                                <div class="small text-muted text-uppercase fw-semibold">Assigned Engineers</div>
                                 <div class="small text-muted"><?php echo e($ticket->assigned_team_name ?? 'No team assigned'); ?></div>
                             </div>
+                            <?php if($activeAssignedEngineers->count() > 0): ?>
+                                <span class="badge bg-primary-subtle text-primary">
+                                    <?php echo e($activeAssignedEngineers->count()); ?> <?php echo e($activeAssignedEngineers->count() > 1 ? 'engineers' : 'engineer'); ?>
+
+                                </span>
+                            <?php endif; ?>
                         </div>
-                        <div class="col-md-3">
+                        <?php if($activeAssignedEngineers->isNotEmpty()): ?>
+                            <ul class="assigned-engineer-list">
+                                <?php $__currentLoopData = $activeAssignedEngineers; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $engineer): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+                                    <li>
+                                        <span class="assigned-owner-avatar"><?php echo e($engineerInitials($engineer->name)); ?></span>
+                                        <span class="assigned-owner-main">
+                                            <span class="assigned-owner-name"><?php echo e($engineer->name); ?></span>
+                                            <?php if($scoreShareLabel($engineer)): ?>
+                                                <span class="assigned-owner-meta"><?php echo e($scoreShareLabel($engineer)); ?></span>
+                                            <?php endif; ?>
+                                        </span>
+                                    </li>
+                                <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?>
+                            </ul>
+                        <?php else: ?>
+                            <div class="fw-semibold">Unassigned</div>
+                        <?php endif; ?>
+                    </div>
+
+                    <div class="row g-3 mt-3">
+                        <div class="col-md-4">
                             <div class="rounded-3 border bg-white p-3 h-100">
                                 <div class="small text-muted mb-1">Expected Approver</div>
                                 <div class="fw-semibold"><?php echo e($ticket->expectedApproverDisplayName()); ?></div>
                                 <div class="small text-muted"><?php echo e($ticket->flowPolicySourceLabel()); ?></div>
                             </div>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-4">
                             <div class="rounded-3 border bg-white p-3 h-100">
                                 <div class="small text-muted mb-1">Ticket Age</div>
                                 <div class="fw-semibold"><?php echo e($ticketAgeHours !== null ? number_format($ticketAgeHours) . ' hours' : '-'); ?></div>
                                 <div class="small text-muted"><?php echo e(optional($ticket->created_at)->format('d M Y H:i') ?? 'Unknown created time'); ?></div>
                             </div>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-4">
                             <div class="rounded-3 border bg-white p-3 h-100">
                                 <div class="small text-muted mb-1">Work Duration</div>
                                 <div class="fw-semibold"><?php echo e($workDurationMinutes !== null ? $workDurationMinutes.' min' : '-'); ?></div>
@@ -362,7 +410,18 @@
                                 </div>
                                 <div>
                                     <div class="text-muted small">Assigned Engineer</div>
-                                    <div class="fw-medium"><?php echo e($ticket->assignedEngineer?->name ?? '-'); ?></div>
+                                    <?php if($activeAssignedEngineers->isNotEmpty()): ?>
+                                        <div class="assigned-chip-list mt-1">
+                                            <?php $__currentLoopData = $activeAssignedEngineers; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $engineer): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+                                                <span class="assigned-chip" title="<?php echo e($engineer->name); ?>">
+                                                    <span class="assigned-chip-avatar"><?php echo e($engineerInitials($engineer->name)); ?></span>
+                                                    <span class="assigned-chip-name"><?php echo e($engineer->name); ?></span>
+                                                </span>
+                                            <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?>
+                                        </div>
+                                    <?php else: ?>
+                                        <div class="fw-medium">-</div>
+                                    <?php endif; ?>
                                     <div class="text-muted"><?php echo e($ticket->assigned_team_name ?? 'No team assigned'); ?></div>
                                 </div>
                                 <div>
@@ -830,8 +889,6 @@
                 <form method="POST" action="<?php echo e(route('tickets.assign', $ticket)); ?>" class="row g-3">
                     <?php echo csrf_field(); ?>
 
-                    <input type="hidden" id="assigned_engineer_id" name="assigned_engineer_id" value="<?php echo e(old('assigned_engineer_id', $ticket->assigned_engineer_id)); ?>">
-
                     <?php if($engineerRecommendation['has_recommendation'] ?? false): ?>
                         <div class="col-12">
                             <div class="row g-2">
@@ -882,19 +939,26 @@
                                 <select id="recommended_engineer_id_ui"
                                     data-searchable-select data-force-searchable-select="true"
                                     data-engineer-picker="true" data-search-placeholder="Search recommended engineer"
-                                    class="form-select <?php $__errorArgs = ['assigned_engineer_id'];
+                                    class="form-select <?php $__errorArgs = ['assigned_engineer_ids'];
 $__bag = $errors->getBag($__errorArgs[1] ?? 'default');
 if ($__bag->has($__errorArgs[0])) :
 if (isset($message)) { $__messageOriginal = $message; }
 $message = $__bag->first($__errorArgs[0]); ?> is-invalid <?php unset($message);
 if (isset($__messageOriginal)) { $message = $__messageOriginal; }
 endif;
-unset($__errorArgs, $__bag); ?>" data-assignment-source="recommended">
-                                    <option value="">- Select Recommended Engineer -</option>
+unset($__errorArgs, $__bag); ?> <?php $__errorArgs = ['assigned_engineer_ids.*'];
+$__bag = $errors->getBag($__errorArgs[1] ?? 'default');
+if ($__bag->has($__errorArgs[0])) :
+if (isset($message)) { $__messageOriginal = $message; }
+$message = $__bag->first($__errorArgs[0]); ?> is-invalid <?php unset($message);
+if (isset($__messageOriginal)) { $message = $__messageOriginal; }
+endif;
+unset($__errorArgs, $__bag); ?>"
+                                    name="assigned_engineer_ids[]" multiple>
                                     <?php $__currentLoopData = $engineerOptions; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $option): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
                                         <option value="<?php echo e($option->id); ?>"
                                             data-custom-properties='<?php echo json_encode($engineerCustomProperties($option), 15, 512) ?>'
-                                            <?php if((string) old('assigned_engineer_id', $ticket->assigned_engineer_id) === (string) $option->id): echo 'selected'; endif; ?>>
+                                            <?php if(in_array((string) $option->id, $selectedAssignedEngineerIds, true)): echo 'selected'; endif; ?>>
                                             <?php echo e($option->name); ?>
 
                                             <?php if(!empty($option->matched_skill_names)): ?>
@@ -916,18 +980,17 @@ unset($__errorArgs, $__bag); ?>" data-assignment-source="recommended">
                                     <select id="fallback_engineer_id_ui"
                                         data-searchable-select data-force-searchable-select="true"
                                         data-engineer-picker="true" data-search-placeholder="Search fallback engineer"
-                                        class="form-select" data-assignment-source="fallback">
-                                        <option value="">- Use Recommended List -</option>
+                                        class="form-select" name="assigned_engineer_ids[]" multiple>
                                         <?php $__currentLoopData = $fallbackEngineerOptions; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $option): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
                                             <option value="<?php echo e($option->id); ?>"
                                                 data-custom-properties='<?php echo json_encode($engineerCustomProperties($option), 15, 512) ?>'
-                                                <?php if((string) old('assigned_engineer_id', $ticket->assigned_engineer_id) === (string) $option->id): echo 'selected'; endif; ?>>
+                                                <?php if(in_array((string) $option->id, $selectedAssignedEngineerIds, true)): echo 'selected'; endif; ?>>
                                                 <?php echo e($option->name); ?>
 
                                             </option>
                                         <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?>
                                     </select>
-                                    <div class="form-text">Dipakai jika supervisor perlu override karena pertimbangan kapasitas, shift, atau kebutuhan lapangan.</div>
+                                    <div class="form-text">Bisa pilih lebih dari satu engineer. Score ticket akan dibagi rata ke semua engineer aktif.</div>
                                 </div>
                             </div>
                         <?php endif; ?>
@@ -937,29 +1000,48 @@ unset($__errorArgs, $__bag); ?>" data-assignment-source="recommended">
                             <select id="fallback_engineer_id_ui"
                                 data-searchable-select data-force-searchable-select="true"
                                 data-engineer-picker="true" data-search-placeholder="Search engineer"
-                                class="form-select <?php $__errorArgs = ['assigned_engineer_id'];
+                                class="form-select <?php $__errorArgs = ['assigned_engineer_ids'];
 $__bag = $errors->getBag($__errorArgs[1] ?? 'default');
 if ($__bag->has($__errorArgs[0])) :
 if (isset($message)) { $__messageOriginal = $message; }
 $message = $__bag->first($__errorArgs[0]); ?> is-invalid <?php unset($message);
 if (isset($__messageOriginal)) { $message = $__messageOriginal; }
 endif;
-unset($__errorArgs, $__bag); ?>" data-assignment-source="fallback" required>
-                                <option value="">- Select Engineer -</option>
+unset($__errorArgs, $__bag); ?> <?php $__errorArgs = ['assigned_engineer_ids.*'];
+$__bag = $errors->getBag($__errorArgs[1] ?? 'default');
+if ($__bag->has($__errorArgs[0])) :
+if (isset($message)) { $__messageOriginal = $message; }
+$message = $__bag->first($__errorArgs[0]); ?> is-invalid <?php unset($message);
+if (isset($__messageOriginal)) { $message = $__messageOriginal; }
+endif;
+unset($__errorArgs, $__bag); ?>"
+                                name="assigned_engineer_ids[]" multiple required>
                                 <?php $__currentLoopData = $fallbackEngineerOptions; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $option): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
                                     <option value="<?php echo e($option->id); ?>"
                                         data-custom-properties='<?php echo json_encode($engineerCustomProperties($option), 15, 512) ?>'
-                                        <?php if((string) old('assigned_engineer_id', $ticket->assigned_engineer_id) === (string) $option->id): echo 'selected'; endif; ?>>
+                                        <?php if(in_array((string) $option->id, $selectedAssignedEngineerIds, true)): echo 'selected'; endif; ?>>
                                         <?php echo e($option->name); ?>
 
                                     </option>
                                 <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?>
                             </select>
-                            <div class="form-text">Belum ada skill mapping yang match. Urutan fallback tetap mempertimbangkan availability schedule dan workload engineer.</div>
+                            <div class="form-text">Bisa pilih lebih dari satu engineer. Score ticket akan dibagi rata ke semua engineer aktif.</div>
                         </div>
                     <?php endif; ?>
 
-                    <?php $__errorArgs = ['assigned_engineer_id'];
+                    <?php $__errorArgs = ['assigned_engineer_ids'];
+$__bag = $errors->getBag($__errorArgs[1] ?? 'default');
+if ($__bag->has($__errorArgs[0])) :
+if (isset($message)) { $__messageOriginal = $message; }
+$message = $__bag->first($__errorArgs[0]); ?>
+                        <div class="col-12">
+                            <div class="invalid-feedback d-block"><?php echo e($message); ?></div>
+                        </div>
+                    <?php unset($message);
+if (isset($__messageOriginal)) { $message = $__messageOriginal; }
+endif;
+unset($__errorArgs, $__bag); ?>
+                    <?php $__errorArgs = ['assigned_engineer_ids.*'];
 $__bag = $errors->getBag($__errorArgs[1] ?? 'default');
 if ($__bag->has($__errorArgs[0])) :
 if (isset($message)) { $__messageOriginal = $message; }
@@ -1055,6 +1137,102 @@ unset($__errorArgs, $__bag); ?>
     </div>
 </div>
 <?php $__env->stopSection(); ?>
+
+<?php $__env->startPush('styles'); ?>
+<style>
+    .assigned-engineer-section {
+        border-top: 1px solid var(--bs-border-color);
+        margin-top: 1.25rem;
+        padding-top: 1rem;
+    }
+
+    .assigned-engineer-list {
+        display: grid;
+        gap: .75rem 1.25rem;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        list-style: none;
+        margin: 0;
+        padding: 0;
+    }
+
+    .assigned-engineer-list li {
+        align-items: center;
+        display: grid;
+        gap: .55rem;
+        grid-template-columns: 32px minmax(0, 1fr);
+        min-width: 0;
+    }
+
+    .assigned-owner-avatar,
+    .assigned-chip-avatar {
+        align-items: center;
+        background: var(--bs-primary-bg-subtle);
+        color: var(--bs-primary);
+        display: inline-flex;
+        flex: 0 0 auto;
+        font-weight: 700;
+        justify-content: center;
+    }
+
+    .assigned-owner-avatar {
+        border-radius: 50%;
+        font-size: .72rem;
+        height: 32px;
+        width: 32px;
+    }
+
+    .assigned-owner-main {
+        display: grid;
+        line-height: 1.2;
+        min-width: 0;
+    }
+
+    .assigned-owner-name {
+        font-weight: 700;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .assigned-owner-meta {
+        color: var(--bs-secondary-color);
+        font-size: .75rem;
+    }
+
+    .assigned-chip-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: .4rem;
+    }
+
+    .assigned-chip {
+        align-items: center;
+        background: var(--bs-light-bg-subtle);
+        border: 1px solid var(--bs-border-color);
+        border-radius: 999px;
+        display: inline-flex;
+        gap: .35rem;
+        max-width: 100%;
+        min-width: 0;
+        padding: .2rem .55rem .2rem .25rem;
+    }
+
+    .assigned-chip-avatar {
+        border-radius: 50%;
+        font-size: .62rem;
+        height: 22px;
+        width: 22px;
+    }
+
+    .assigned-chip-name {
+        font-size: .82rem;
+        font-weight: 600;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+</style>
+<?php $__env->stopPush(); ?>
 
 <?php $__env->startPush('scripts'); ?>
 <script>

@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Ticket extends Model
@@ -157,6 +158,18 @@ class Ticket extends Model
     public function assignedEngineer(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assigned_engineer_id');
+    }
+
+    public function assignedEngineers(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'ticket_engineer_assignments', 'ticket_id', 'engineer_id')
+            ->withPivot(['assigned_by_id', 'team_name', 'score_share', 'assigned_at'])
+            ->withTimestamps();
+    }
+
+    public function engineerAssignments(): HasMany
+    {
+        return $this->hasMany(TicketEngineerAssignment::class);
     }
 
     public function approvedBy(): BelongsTo
@@ -353,6 +366,36 @@ class Ticket extends Model
         }
 
         return in_array((string) $user->role, ['super_admin', 'operational_admin', 'supervisor'], true);
+    }
+
+    public function isAssignedTo(?User $user): bool
+    {
+        if ($user === null) {
+            return false;
+        }
+
+        if ((int) $this->assigned_engineer_id === (int) $user->id) {
+            return true;
+        }
+
+        if ($this->relationLoaded('assignedEngineers')) {
+            return $this->assignedEngineers->contains('id', $user->id);
+        }
+
+        return $this->assignedEngineers()->whereKey($user->id)->exists();
+    }
+
+    public function assignedEngineerNames(): string
+    {
+        $engineers = $this->relationLoaded('assignedEngineers')
+            ? $this->assignedEngineers
+            : $this->assignedEngineers()->get(['users.id', 'users.name']);
+
+        if ($engineers->isNotEmpty()) {
+            return $engineers->pluck('name')->filter()->implode(', ');
+        }
+
+        return $this->assignedEngineer?->name ?? '';
     }
 
     public function isPendingCustomer(): bool

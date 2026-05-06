@@ -69,6 +69,7 @@ class EngineerTaskController extends Controller
             'asset.category:id,name',
             'assetLocation:id,name',
             'assignedEngineer:id,name',
+            'assignedEngineers:id,name',
             'attachments',
             'attachments.uploadedBy:id,name',
             'worklogs.user:id,name',

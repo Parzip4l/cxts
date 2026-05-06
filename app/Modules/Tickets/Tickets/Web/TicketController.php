@@ -98,6 +98,11 @@ class TicketController extends Controller
             'serviceOptions' => ServiceCatalog::query()->where('is_active', true)->orderBy('name')->get(['id', 'name']),
             'assetOptions' => Asset::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'service_id', 'asset_location_id', 'asset_category_id']),
             'locationOptions' => AssetLocation::query()->where('is_active', true)->orderBy('name')->get(['id', 'name']),
+            'engineerOptions' => User::query()
+                ->where('role', 'engineer')
+                ->with(['department:id,name', 'engineerSkills:id,name'])
+                ->orderBy('name')
+                ->get(['id', 'name', 'department_id']),
             'defaultRequesterId' => $authUser?->id,
             'defaultRequesterDepartmentId' => $authUser?->department_id,
             'defaultPriorityId' => $this->resolveDefaultPriorityId($priorityOptions),
@@ -121,11 +126,44 @@ class TicketController extends Controller
         $payload['impact'] = $payload['impact'] ?? 'medium';
         $payload['urgency'] = $payload['urgency'] ?? 'medium';
 
+        $assignmentEngineerIds = collect($payload['assigned_engineer_ids'] ?? [])->filter()->unique()->values();
+        $assignmentTeamName = $payload['assigned_team_name'] ?? null;
+        $assignmentNotes = $payload['assignment_notes'] ?? null;
+        unset($payload['assigned_engineer_ids'], $payload['assigned_team_name'], $payload['assignment_notes']);
+
         $ticket = $this->ticketService->create($payload, $request->user());
+        $assignmentMessage = null;
+
+        if ($assignmentEngineerIds->isNotEmpty() && $request->user()?->can('assign', $ticket)) {
+            if ($ticket->canBeAssigned()) {
+                $engineers = User::query()
+                    ->where('role', 'engineer')
+                    ->whereIn('id', $assignmentEngineerIds)
+                    ->get()
+                    ->keyBy('id');
+
+                $orderedEngineers = $assignmentEngineerIds
+                    ->map(fn ($id) => $engineers->get((int) $id))
+                    ->filter()
+                    ->values();
+
+                $this->ticketService->assign(
+                    ticket: $ticket,
+                    assignedEngineers: $orderedEngineers,
+                    actor: $request->user(),
+                    teamName: $assignmentTeamName,
+                    notes: $assignmentNotes,
+                );
+
+                $assignmentMessage = ' Ticket has been assigned to '.number_format($orderedEngineers->count()).' engineer(s).';
+            } else {
+                $assignmentMessage = ' Engineer selection was not processed because this ticket must pass approval/readiness gate before assignment.';
+            }
+        }
 
         return redirect()
             ->route('tickets.show', $ticket)
-            ->with('success', 'Ticket has been created.');
+            ->with('success', 'Ticket has been created.'.$assignmentMessage);
     }
 
     public function show(Request $request, Ticket $ticket): View
@@ -149,7 +187,9 @@ class TicketController extends Controller
             'assetLocation:id,name',
             'inspection:id,inspection_number',
             'assignedEngineer:id,name',
+            'assignedEngineers:id,name',
             'assignedEngineer.engineerSkills:id,name',
+            'assignedEngineers.engineerSkills:id,name',
             'expectedApprover:id,name',
             'approvedBy:id,name',
             'rejectedBy:id,name',
@@ -211,11 +251,30 @@ class TicketController extends Controller
     {
         $this->authorize('assign', $ticket);
 
-        $engineer = User::query()->whereKey($request->validated('assigned_engineer_id'))->firstOrFail();
+        $validated = $request->validated();
+        $engineerIds = collect($validated['assigned_engineer_ids'] ?? [])
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($engineerIds->isEmpty() && ! empty($validated['assigned_engineer_id'])) {
+            $engineerIds = collect([(int) $validated['assigned_engineer_id']]);
+        }
+
+        $engineers = User::query()
+            ->where('role', 'engineer')
+            ->whereIn('id', $engineerIds)
+            ->get()
+            ->keyBy('id');
+
+        $orderedEngineers = $engineerIds
+            ->map(fn ($id) => $engineers->get((int) $id))
+            ->filter()
+            ->values();
 
         $this->ticketService->assign(
             ticket: $ticket,
-            assignedEngineer: $engineer,
+            assignedEngineers: $orderedEngineers,
             actor: $request->user(),
             teamName: $request->validated('assigned_team_name'),
             notes: $request->validated('notes'),
@@ -223,7 +282,7 @@ class TicketController extends Controller
 
         return redirect()
             ->route('tickets.show', $ticket)
-            ->with('success', 'Ticket has been assigned.');
+            ->with('success', 'Ticket has been assigned to '.number_format($orderedEngineers->count()).' engineer(s).');
     }
 
     public function approve(TicketDecisionRequest $request, Ticket $ticket): RedirectResponse

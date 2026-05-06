@@ -197,7 +197,7 @@
                             <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('engineer-tasks.index') }}">My Tasks</a></li>
                             <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('engineer-tasks.history') }}">Task History</a></li>
                             <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('engineer-tasks.schedule') }}">My Schedule</a></li>
-                            <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('engineer-performance') }}">My Performance</a></li>
+                            <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('engineer-performance') }}">My Scoring Report</a></li>
                         </ul>
                     </div>
                 </li>

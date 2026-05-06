@@ -8,6 +8,12 @@
     $ticketAgeHours = $ticket->created_at ? $ticket->created_at->diffInHours(now()) : null;
     $responseRiskLabel = null;
     $currentUser = auth()->user();
+    $activeAssignedEngineers = $ticket->assignedEngineers->isNotEmpty()
+        ? $ticket->assignedEngineers
+        : collect([$ticket->assignedEngineer])->filter();
+    $selectedAssignedEngineerIds = collect(old('assigned_engineer_ids', $activeAssignedEngineers->pluck('id')->all()))
+        ->map(fn ($id) => (string) $id)
+        ->all();
     $statusCode = strtoupper((string) ($ticket->status?->code ?? ''));
     $approvalActivities = $ticket->activities->filter(fn ($activity) => in_array($activity->activity_type, ['ticket_approved', 'ticket_rejected', 'ticket_ready_for_assignment'], true))->values();
     $lifecycleActivities = $ticket->activities->filter(fn ($activity) => in_array($activity->activity_type, ['ticket_pending_customer', 'ticket_closed', 'ticket_reopened', 'ticket_cancelled'], true))->values();
@@ -138,6 +144,23 @@
             'recommendation_score' => (int) ($option->recommendation_score ?? 0),
         ];
     };
+    $engineerInitials = function ($name) {
+        $parts = collect(preg_split('/\s+/', trim((string) $name)) ?: [])
+            ->filter()
+            ->take(2)
+            ->map(fn ($part) => mb_strtoupper(mb_substr($part, 0, 1)));
+
+        return $parts->implode('') ?: '?';
+    };
+    $scoreShareLabel = function ($engineer) {
+        $scoreShare = $engineer->pivot?->score_share;
+
+        if ($scoreShare === null) {
+            return null;
+        }
+
+        return number_format((float) $scoreShare * 100, 0) . '% score';
+    };
 @endphp
 
 <div class="row g-3">
@@ -179,29 +202,53 @@
                         </div>
                     </div>
 
-                    <div class="row g-3">
-                        <div class="col-md-3">
-                            <div class="rounded-3 border bg-white p-3 h-100">
-                                <div class="small text-muted mb-1">Current Owner</div>
-                                <div class="fw-semibold">{{ $ticket->assignedEngineer?->name ?? 'Unassigned' }}</div>
+                    <div class="assigned-engineer-section">
+                        <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-2">
+                            <div>
+                                <div class="small text-muted text-uppercase fw-semibold">Assigned Engineers</div>
                                 <div class="small text-muted">{{ $ticket->assigned_team_name ?? 'No team assigned' }}</div>
                             </div>
+                            @if ($activeAssignedEngineers->count() > 0)
+                                <span class="badge bg-primary-subtle text-primary">
+                                    {{ $activeAssignedEngineers->count() }} {{ $activeAssignedEngineers->count() > 1 ? 'engineers' : 'engineer' }}
+                                </span>
+                            @endif
                         </div>
-                        <div class="col-md-3">
+                        @if ($activeAssignedEngineers->isNotEmpty())
+                            <ul class="assigned-engineer-list">
+                                @foreach ($activeAssignedEngineers as $engineer)
+                                    <li>
+                                        <span class="assigned-owner-avatar">{{ $engineerInitials($engineer->name) }}</span>
+                                        <span class="assigned-owner-main">
+                                            <span class="assigned-owner-name">{{ $engineer->name }}</span>
+                                            @if ($scoreShareLabel($engineer))
+                                                <span class="assigned-owner-meta">{{ $scoreShareLabel($engineer) }}</span>
+                                            @endif
+                                        </span>
+                                    </li>
+                                @endforeach
+                            </ul>
+                        @else
+                            <div class="fw-semibold">Unassigned</div>
+                        @endif
+                    </div>
+
+                    <div class="row g-3 mt-3">
+                        <div class="col-md-4">
                             <div class="rounded-3 border bg-white p-3 h-100">
                                 <div class="small text-muted mb-1">Expected Approver</div>
                                 <div class="fw-semibold">{{ $ticket->expectedApproverDisplayName() }}</div>
                                 <div class="small text-muted">{{ $ticket->flowPolicySourceLabel() }}</div>
                             </div>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-4">
                             <div class="rounded-3 border bg-white p-3 h-100">
                                 <div class="small text-muted mb-1">Ticket Age</div>
                                 <div class="fw-semibold">{{ $ticketAgeHours !== null ? number_format($ticketAgeHours) . ' hours' : '-' }}</div>
                                 <div class="small text-muted">{{ optional($ticket->created_at)->format('d M Y H:i') ?? 'Unknown created time' }}</div>
                             </div>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-4">
                             <div class="rounded-3 border bg-white p-3 h-100">
                                 <div class="small text-muted mb-1">Work Duration</div>
                                 <div class="fw-semibold">{{ $workDurationMinutes !== null ? $workDurationMinutes.' min' : '-' }}</div>
@@ -362,7 +409,18 @@
                                 </div>
                                 <div>
                                     <div class="text-muted small">Assigned Engineer</div>
-                                    <div class="fw-medium">{{ $ticket->assignedEngineer?->name ?? '-' }}</div>
+                                    @if ($activeAssignedEngineers->isNotEmpty())
+                                        <div class="assigned-chip-list mt-1">
+                                            @foreach ($activeAssignedEngineers as $engineer)
+                                                <span class="assigned-chip" title="{{ $engineer->name }}">
+                                                    <span class="assigned-chip-avatar">{{ $engineerInitials($engineer->name) }}</span>
+                                                    <span class="assigned-chip-name">{{ $engineer->name }}</span>
+                                                </span>
+                                            @endforeach
+                                        </div>
+                                    @else
+                                        <div class="fw-medium">-</div>
+                                    @endif
                                     <div class="text-muted">{{ $ticket->assigned_team_name ?? 'No team assigned' }}</div>
                                 </div>
                                 <div>
@@ -816,8 +874,6 @@
                 <form method="POST" action="{{ route('tickets.assign', $ticket) }}" class="row g-3">
                     @csrf
 
-                    <input type="hidden" id="assigned_engineer_id" name="assigned_engineer_id" value="{{ old('assigned_engineer_id', $ticket->assigned_engineer_id) }}">
-
                     @if ($engineerRecommendation['has_recommendation'] ?? false)
                         <div class="col-12">
                             <div class="row g-2">
@@ -865,12 +921,12 @@
                                 <select id="recommended_engineer_id_ui"
                                     data-searchable-select data-force-searchable-select="true"
                                     data-engineer-picker="true" data-search-placeholder="Search recommended engineer"
-                                    class="form-select @error('assigned_engineer_id') is-invalid @enderror" data-assignment-source="recommended">
-                                    <option value="">- Select Recommended Engineer -</option>
+                                    class="form-select @error('assigned_engineer_ids') is-invalid @enderror @error('assigned_engineer_ids.*') is-invalid @enderror"
+                                    name="assigned_engineer_ids[]" multiple>
                                     @foreach ($engineerOptions as $option)
                                         <option value="{{ $option->id }}"
                                             data-custom-properties='@json($engineerCustomProperties($option))'
-                                            @selected((string) old('assigned_engineer_id', $ticket->assigned_engineer_id) === (string) $option->id)>
+                                            @selected(in_array((string) $option->id, $selectedAssignedEngineerIds, true))>
                                             {{ $option->name }}
                                             @if (!empty($option->matched_skill_names))
                                                 - {{ implode(', ', $option->matched_skill_names) }}
@@ -890,17 +946,16 @@
                                     <select id="fallback_engineer_id_ui"
                                         data-searchable-select data-force-searchable-select="true"
                                         data-engineer-picker="true" data-search-placeholder="Search fallback engineer"
-                                        class="form-select" data-assignment-source="fallback">
-                                        <option value="">- Use Recommended List -</option>
+                                        class="form-select" name="assigned_engineer_ids[]" multiple>
                                         @foreach ($fallbackEngineerOptions as $option)
                                             <option value="{{ $option->id }}"
                                                 data-custom-properties='@json($engineerCustomProperties($option))'
-                                                @selected((string) old('assigned_engineer_id', $ticket->assigned_engineer_id) === (string) $option->id)>
+                                                @selected(in_array((string) $option->id, $selectedAssignedEngineerIds, true))>
                                                 {{ $option->name }}
                                             </option>
                                         @endforeach
                                     </select>
-                                    <div class="form-text">Dipakai jika supervisor perlu override karena pertimbangan kapasitas, shift, atau kebutuhan lapangan.</div>
+                                    <div class="form-text">Bisa pilih lebih dari satu engineer. Score ticket akan dibagi rata ke semua engineer aktif.</div>
                                 </div>
                             </div>
                         @endif
@@ -910,21 +965,26 @@
                             <select id="fallback_engineer_id_ui"
                                 data-searchable-select data-force-searchable-select="true"
                                 data-engineer-picker="true" data-search-placeholder="Search engineer"
-                                class="form-select @error('assigned_engineer_id') is-invalid @enderror" data-assignment-source="fallback" required>
-                                <option value="">- Select Engineer -</option>
+                                class="form-select @error('assigned_engineer_ids') is-invalid @enderror @error('assigned_engineer_ids.*') is-invalid @enderror"
+                                name="assigned_engineer_ids[]" multiple required>
                                 @foreach ($fallbackEngineerOptions as $option)
                                     <option value="{{ $option->id }}"
                                         data-custom-properties='@json($engineerCustomProperties($option))'
-                                        @selected((string) old('assigned_engineer_id', $ticket->assigned_engineer_id) === (string) $option->id)>
+                                        @selected(in_array((string) $option->id, $selectedAssignedEngineerIds, true))>
                                         {{ $option->name }}
                                     </option>
                                 @endforeach
                             </select>
-                            <div class="form-text">Belum ada skill mapping yang match. Urutan fallback tetap mempertimbangkan availability schedule dan workload engineer.</div>
+                            <div class="form-text">Bisa pilih lebih dari satu engineer. Score ticket akan dibagi rata ke semua engineer aktif.</div>
                         </div>
                     @endif
 
-                    @error('assigned_engineer_id')
+                    @error('assigned_engineer_ids')
+                        <div class="col-12">
+                            <div class="invalid-feedback d-block">{{ $message }}</div>
+                        </div>
+                    @enderror
+                    @error('assigned_engineer_ids.*')
                         <div class="col-12">
                             <div class="invalid-feedback d-block">{{ $message }}</div>
                         </div>
@@ -981,6 +1041,102 @@
     </div>
 </div>
 @endsection
+
+@push('styles')
+<style>
+    .assigned-engineer-section {
+        border-top: 1px solid var(--bs-border-color);
+        margin-top: 1.25rem;
+        padding-top: 1rem;
+    }
+
+    .assigned-engineer-list {
+        display: grid;
+        gap: .75rem 1.25rem;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        list-style: none;
+        margin: 0;
+        padding: 0;
+    }
+
+    .assigned-engineer-list li {
+        align-items: center;
+        display: grid;
+        gap: .55rem;
+        grid-template-columns: 32px minmax(0, 1fr);
+        min-width: 0;
+    }
+
+    .assigned-owner-avatar,
+    .assigned-chip-avatar {
+        align-items: center;
+        background: var(--bs-primary-bg-subtle);
+        color: var(--bs-primary);
+        display: inline-flex;
+        flex: 0 0 auto;
+        font-weight: 700;
+        justify-content: center;
+    }
+
+    .assigned-owner-avatar {
+        border-radius: 50%;
+        font-size: .72rem;
+        height: 32px;
+        width: 32px;
+    }
+
+    .assigned-owner-main {
+        display: grid;
+        line-height: 1.2;
+        min-width: 0;
+    }
+
+    .assigned-owner-name {
+        font-weight: 700;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .assigned-owner-meta {
+        color: var(--bs-secondary-color);
+        font-size: .75rem;
+    }
+
+    .assigned-chip-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: .4rem;
+    }
+
+    .assigned-chip {
+        align-items: center;
+        background: var(--bs-light-bg-subtle);
+        border: 1px solid var(--bs-border-color);
+        border-radius: 999px;
+        display: inline-flex;
+        gap: .35rem;
+        max-width: 100%;
+        min-width: 0;
+        padding: .2rem .55rem .2rem .25rem;
+    }
+
+    .assigned-chip-avatar {
+        border-radius: 50%;
+        font-size: .62rem;
+        height: 22px;
+        width: 22px;
+    }
+
+    .assigned-chip-name {
+        font-size: .82rem;
+        font-weight: 600;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+</style>
+@endpush
 
 @push('scripts')
 <script>

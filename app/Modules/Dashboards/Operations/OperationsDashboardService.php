@@ -45,8 +45,8 @@ class OperationsDashboardService
         [$from, $to] = $this->resolvePeriod($filters);
         $engineers = $this->engineerStats($actor, $from, $to, $filters)->values();
 
-        $totalAssigned = (int) $engineers->sum('assigned_tickets');
-        $totalCompleted = (int) $engineers->sum('completed_tickets');
+        $totalAssigned = round((float) $engineers->sum('assigned_tickets'), 2);
+        $totalCompleted = round((float) $engineers->sum('completed_tickets'), 2);
 
         return [
             'period' => $this->serializePeriod($from, $to),
@@ -72,7 +72,33 @@ class OperationsDashboardService
             'engineer' => $engineerStats,
             'sla' => $this->slaSummary($engineer, $from, $to, $filters),
             'recent_tickets' => $this->recentTicketsForEngineer($engineer, $from, $to, $filters),
+            'score_reports' => $this->engineerScoreReports($engineer, $filters),
         ];
+    }
+
+    private function engineerScoreReports(User $engineer, array $filters = []): array
+    {
+        $now = CarbonImmutable::now();
+        $periods = [
+            'weekly' => [$now->startOfWeek(), $now->endOfWeek()],
+            'monthly' => [$now->startOfMonth(), $now->endOfMonth()],
+            'yearly' => [$now->startOfYear(), $now->endOfYear()],
+        ];
+
+        return collect($periods)
+            ->map(function (array $period, string $key) use ($engineer, $filters): array {
+                [$from, $to] = $period;
+                $stats = $this->engineerStats($engineer, $from, $to, $filters, null, $engineer->id)->first();
+
+                return [
+                    'key' => $key,
+                    'label' => str($key)->title()->toString(),
+                    'period' => $this->serializePeriod($from, $to),
+                    'stats' => $stats,
+                ];
+            })
+            ->values()
+            ->all();
     }
 
     public function executiveReport(?User $actor, array $filters = []): array
@@ -109,21 +135,28 @@ class OperationsDashboardService
         $openTickets = (clone $baseQuery)->whereNull('tickets.completed_at')->count();
 
         $avgResponseMinutes = (clone $baseQuery)
-            ->whereNotNull('tickets.responded_at')
-            ->selectRaw('AVG(EXTRACT(EPOCH FROM (tickets.responded_at - tickets.created_at)) / 60) as avg_minutes')
-            ->value('avg_minutes');
+            ->where(function (Builder $query): void {
+                $query->whereNotNull('tickets.responded_at')
+                    ->orWhereNotNull('tickets.started_at');
+            })
+            ->get(['tickets.created_at', 'tickets.responded_at', 'tickets.started_at'])
+            ->map(fn (Ticket $ticket) => $ticket->created_at?->diffInMinutes($ticket->responded_at ?? $ticket->started_at))
+            ->filter(fn ($minutes) => $minutes !== null)
+            ->avg();
 
         $avgResolutionMinutes = (clone $baseQuery)
             ->whereNotNull('tickets.completed_at')
-            ->selectRaw('AVG(EXTRACT(EPOCH FROM (tickets.completed_at - tickets.created_at)) / 60) as avg_minutes')
-            ->value('avg_minutes');
+            ->get(['tickets.created_at', 'tickets.completed_at'])
+            ->map(fn (Ticket $ticket) => $ticket->created_at?->diffInMinutes($ticket->completed_at))
+            ->filter(fn ($minutes) => $minutes !== null)
+            ->avg();
 
         return [
             'total_tickets' => $totalTickets,
             'open_tickets' => $openTickets,
             'completed_tickets' => $completedTickets,
             'in_progress_tickets' => (clone $baseQuery)->whereNotNull('tickets.started_at')->whereNull('tickets.completed_at')->count(),
-            'unassigned_tickets' => (clone $baseQuery)->whereNull('tickets.assigned_engineer_id')->count(),
+            'unassigned_tickets' => (clone $baseQuery)->whereNull('tickets.assigned_engineer_id')->whereDoesntHave('assignedEngineers')->count(),
             'overdue_resolution_tickets' => (clone $baseQuery)
                 ->whereNull('tickets.completed_at')
                 ->whereNull('tickets.paused_at')
@@ -142,8 +175,8 @@ class OperationsDashboardService
         $inspection = $this->inspectionSummary($actor, $from, $to);
         $engineers = $this->engineerStats($actor, $from, $to, $filters)->values();
 
-        $totalAssigned = (int) $engineers->sum('assigned_tickets');
-        $totalCompleted = (int) $engineers->sum('completed_tickets');
+        $totalAssigned = round((float) $engineers->sum('assigned_tickets'), 2);
+        $totalCompleted = round((float) $engineers->sum('completed_tickets'), 2);
         $completionRate = $this->percentage($summary['completed_tickets'] ?? 0, $summary['total_tickets'] ?? 0);
 
         return [
@@ -665,18 +698,24 @@ class OperationsDashboardService
 
         $responseOnTime = (clone $baseQuery)
             ->whereNotNull('tickets.response_due_at')
-            ->whereNotNull('tickets.responded_at')
-            ->whereColumn('tickets.responded_at', '<=', 'tickets.response_due_at')
+            ->where(function (Builder $query): void {
+                $query->whereNotNull('tickets.responded_at')
+                    ->orWhereNotNull('tickets.started_at');
+            })
+            ->whereRaw('COALESCE(tickets.responded_at, tickets.started_at) <= tickets.response_due_at')
             ->count();
 
         $responseBreached = (clone $baseQuery)
             ->whereNotNull('tickets.response_due_at')
             ->where(function (Builder $query) use ($now): void {
                 $query->where(function (Builder $started): void {
-                    $started->whereNotNull('tickets.responded_at')
-                        ->whereColumn('tickets.responded_at', '>', 'tickets.response_due_at');
+                    $started->where(function (Builder $response): void {
+                        $response->whereNotNull('tickets.responded_at')
+                            ->orWhereNotNull('tickets.started_at');
+                    })->whereRaw('COALESCE(tickets.responded_at, tickets.started_at) > tickets.response_due_at');
                 })->orWhere(function (Builder $pending) use ($now): void {
                     $pending->whereNull('tickets.responded_at')
+                        ->whereNull('tickets.started_at')
                         ->whereNull('tickets.paused_at')
                         ->where('tickets.response_due_at', '<', $now);
                 });
@@ -686,6 +725,7 @@ class OperationsDashboardService
         $responsePending = (clone $baseQuery)
             ->whereNotNull('tickets.response_due_at')
             ->whereNull('tickets.responded_at')
+            ->whereNull('tickets.started_at')
             ->whereNull('tickets.paused_at')
             ->where('tickets.response_due_at', '>=', $now)
             ->count();
@@ -800,10 +840,13 @@ class OperationsDashboardService
                     $response->whereNotNull('tickets.response_due_at')
                         ->where(function (Builder $responseCheck) use ($now): void {
                             $responseCheck->where(function (Builder $started): void {
-                                $started->whereNotNull('tickets.responded_at')
-                                    ->whereColumn('tickets.responded_at', '>', 'tickets.response_due_at');
+                                $started->where(function (Builder $response): void {
+                                    $response->whereNotNull('tickets.responded_at')
+                                        ->orWhereNotNull('tickets.started_at');
+                                })->whereRaw('COALESCE(tickets.responded_at, tickets.started_at) > tickets.response_due_at');
                             })->orWhere(function (Builder $pending) use ($now): void {
                                 $pending->whereNull('tickets.responded_at')
+                                    ->whereNull('tickets.started_at')
                                     ->whereNull('tickets.paused_at')
                                     ->where('tickets.response_due_at', '<', $now);
                             });
@@ -852,10 +895,13 @@ class OperationsDashboardService
                     $response->whereNotNull('tickets.response_due_at')
                         ->where(function (Builder $responseCheck) use ($now): void {
                             $responseCheck->where(function (Builder $started): void {
-                                $started->whereNotNull('tickets.responded_at')
-                                    ->whereColumn('tickets.responded_at', '>', 'tickets.response_due_at');
+                                $started->where(function (Builder $response): void {
+                                    $response->whereNotNull('tickets.responded_at')
+                                        ->orWhereNotNull('tickets.started_at');
+                                })->whereRaw('COALESCE(tickets.responded_at, tickets.started_at) > tickets.response_due_at');
                             })->orWhere(function (Builder $pending) use ($now): void {
                                 $pending->whereNull('tickets.responded_at')
+                                    ->whereNull('tickets.started_at')
                                     ->whereNull('tickets.paused_at')
                                     ->where('tickets.response_due_at', '<', $now);
                             });
@@ -879,9 +925,10 @@ class OperationsDashboardService
             ->get();
 
         return $tickets->map(function (Ticket $ticket) use ($now): array {
+            $responseAt = $ticket->responded_at ?? $ticket->started_at;
             $responseBreached = $ticket->response_due_at !== null
-                && (($ticket->responded_at !== null && $ticket->responded_at->gt($ticket->response_due_at))
-                    || ($ticket->responded_at === null && $ticket->paused_at === null && $ticket->response_due_at->lt($now)));
+                && (($responseAt !== null && $responseAt->gt($ticket->response_due_at))
+                    || ($responseAt === null && $ticket->paused_at === null && $ticket->response_due_at->lt($now)));
 
             $resolutionBreached = $ticket->resolution_due_at !== null
                 && (($ticket->completed_at !== null && $ticket->completed_at->gt($ticket->resolution_due_at))
@@ -889,7 +936,7 @@ class OperationsDashboardService
 
             $responseLateMinutes = null;
             if ($responseBreached && $ticket->response_due_at !== null) {
-                $actualResponseAt = $ticket->responded_at ?? $now;
+                $actualResponseAt = $responseAt ?? $now;
                 $responseLateMinutes = max(0, $ticket->response_due_at->diffInMinutes($actualResponseAt));
             }
 
@@ -927,38 +974,27 @@ class OperationsDashboardService
         $now = CarbonImmutable::now();
 
         $query = Ticket::query()
-            ->from('tickets')
-            ->join('users as engineers', 'tickets.assigned_engineer_id', '=', 'engineers.id')
-            ->leftJoin('departments as engineer_departments', 'engineers.department_id', '=', 'engineer_departments.id')
-            ->whereNotNull('tickets.assigned_engineer_id')
-            ->whereBetween('tickets.created_at', [$from, $to]);
+            ->with([
+                'assignedEngineer.department:id,name',
+                'assignedEngineers.department:id,name',
+            ])
+            ->whereBetween('tickets.created_at', [$from, $to])
+            ->where(function (Builder $builder): void {
+                $builder->whereNotNull('tickets.assigned_engineer_id')
+                    ->orWhereHas('assignedEngineers');
+            });
 
         $this->applyTicketAccessScope($query, $actor);
         $this->applyTicketFilters($query, $filters);
 
         if ($specificEngineerId !== null) {
-            $query->where('tickets.assigned_engineer_id', $specificEngineerId);
+            $query->where(function (Builder $builder) use ($specificEngineerId): void {
+                $builder->where('tickets.assigned_engineer_id', $specificEngineerId)
+                    ->orWhereHas('assignedEngineers', fn (Builder $engineerQuery) => $engineerQuery->whereKey($specificEngineerId));
+            });
         }
 
-        $stats = $query
-            ->selectRaw(
-                'tickets.assigned_engineer_id as engineer_id,
-                engineers.name as engineer_name,
-                engineer_departments.name as department_name,
-                COUNT(*) as assigned_tickets,
-                SUM(CASE WHEN tickets.completed_at IS NOT NULL THEN 1 ELSE 0 END) as completed_tickets,
-                SUM(CASE WHEN tickets.completed_at IS NULL THEN 1 ELSE 0 END) as open_tickets,
-                SUM(CASE WHEN tickets.response_due_at IS NOT NULL AND tickets.responded_at IS NOT NULL AND tickets.responded_at <= tickets.response_due_at THEN 1 ELSE 0 END) as response_on_time_count,
-                SUM(CASE WHEN tickets.response_due_at IS NOT NULL AND ((tickets.responded_at IS NOT NULL AND tickets.responded_at > tickets.response_due_at) OR (tickets.responded_at IS NULL AND tickets.paused_at IS NULL AND tickets.response_due_at < ?)) THEN 1 ELSE 0 END) as response_breached_count,
-                SUM(CASE WHEN tickets.resolution_due_at IS NOT NULL AND tickets.completed_at IS NOT NULL AND tickets.completed_at <= tickets.resolution_due_at THEN 1 ELSE 0 END) as resolution_on_time_count,
-                SUM(CASE WHEN tickets.resolution_due_at IS NOT NULL AND ((tickets.completed_at IS NOT NULL AND tickets.completed_at > tickets.resolution_due_at) OR (tickets.completed_at IS NULL AND tickets.paused_at IS NULL AND tickets.resolution_due_at < ?)) THEN 1 ELSE 0 END) as resolution_breached_count,
-                AVG(CASE WHEN tickets.responded_at IS NOT NULL THEN EXTRACT(EPOCH FROM (tickets.responded_at - tickets.created_at)) / 60 END) as avg_response_minutes,
-                AVG(CASE WHEN tickets.completed_at IS NOT NULL THEN EXTRACT(EPOCH FROM (tickets.completed_at - tickets.created_at)) / 60 END) as avg_resolution_minutes',
-                [$now, $now]
-            )
-            ->groupBy('tickets.assigned_engineer_id', 'engineers.name', 'engineer_departments.name')
-            ->orderByDesc('completed_tickets')
-            ->get();
+        $tickets = $query->get();
 
         $worklogQuery = TicketWorklog::query()
             ->join('tickets', 'ticket_worklogs.ticket_id', '=', 'tickets.id')
@@ -975,13 +1011,90 @@ class OperationsDashboardService
             ->groupBy('ticket_worklogs.user_id')
             ->pluck('total_worklog_minutes', 'ticket_worklogs.user_id');
 
-        $mapped = $stats->map(function (object $row) use ($worklogByEngineer): array {
-            $assignedTickets = (int) $row->assigned_tickets;
-            $completedTickets = (int) $row->completed_tickets;
-            $responseOnTimeCount = (int) $row->response_on_time_count;
-            $responseBreachedCount = (int) $row->response_breached_count;
-            $resolutionOnTimeCount = (int) $row->resolution_on_time_count;
-            $resolutionBreachedCount = (int) $row->resolution_breached_count;
+        $rows = collect();
+
+        foreach ($tickets as $ticket) {
+            $engineers = $ticket->assignedEngineers->isNotEmpty()
+                ? $ticket->assignedEngineers
+                : collect([$ticket->assignedEngineer])->filter();
+
+            if ($specificEngineerId !== null) {
+                $engineers = $engineers->where('id', $specificEngineerId)->values();
+            }
+
+            if ($engineers->isEmpty()) {
+                continue;
+            }
+
+            $defaultShare = round(1 / max(1, $engineers->count()), 4);
+
+            foreach ($engineers as $engineer) {
+                $share = (float) ($engineer->pivot?->score_share ?? $defaultShare);
+                $engineerId = (int) $engineer->id;
+                $current = $rows->get($engineerId, [
+                    'engineer_id' => $engineerId,
+                    'engineer_name' => $engineer->name,
+                    'department_name' => $engineer->department?->name,
+                    'assigned_tickets' => 0.0,
+                    'completed_tickets' => 0.0,
+                    'open_tickets' => 0.0,
+                    'response_on_time_count' => 0.0,
+                    'response_breached_count' => 0.0,
+                    'resolution_on_time_count' => 0.0,
+                    'resolution_breached_count' => 0.0,
+                    'response_minutes_total' => 0.0,
+                    'response_minutes_weight' => 0.0,
+                    'resolution_minutes_total' => 0.0,
+                    'resolution_minutes_weight' => 0.0,
+                ]);
+
+                $current['assigned_tickets'] += $share;
+                $current['completed_tickets'] += $ticket->completed_at !== null ? $share : 0;
+                $current['open_tickets'] += $ticket->completed_at === null ? $share : 0;
+
+                $responseAt = $ticket->responded_at ?? $ticket->started_at;
+
+                if ($ticket->response_due_at !== null && $responseAt !== null && $responseAt->lte($ticket->response_due_at)) {
+                    $current['response_on_time_count'] += $share;
+                }
+
+                if ($ticket->response_due_at !== null
+                    && (($responseAt !== null && $responseAt->gt($ticket->response_due_at))
+                        || ($responseAt === null && $ticket->paused_at === null && $ticket->response_due_at->lt($now)))) {
+                    $current['response_breached_count'] += $share;
+                }
+
+                if ($ticket->resolution_due_at !== null && $ticket->completed_at !== null && $ticket->completed_at->lte($ticket->resolution_due_at)) {
+                    $current['resolution_on_time_count'] += $share;
+                }
+
+                if ($ticket->resolution_due_at !== null
+                    && (($ticket->completed_at !== null && $ticket->completed_at->gt($ticket->resolution_due_at))
+                        || ($ticket->completed_at === null && $ticket->paused_at === null && $ticket->resolution_due_at->lt($now)))) {
+                    $current['resolution_breached_count'] += $share;
+                }
+
+                if ($responseAt !== null && $ticket->created_at !== null) {
+                    $current['response_minutes_total'] += $ticket->created_at->diffInMinutes($responseAt) * $share;
+                    $current['response_minutes_weight'] += $share;
+                }
+
+                if ($ticket->completed_at !== null && $ticket->created_at !== null) {
+                    $current['resolution_minutes_total'] += $ticket->created_at->diffInMinutes($ticket->completed_at) * $share;
+                    $current['resolution_minutes_weight'] += $share;
+                }
+
+                $rows->put($engineerId, $current);
+            }
+        }
+
+        $mapped = $rows->values()->map(function (array $row) use ($worklogByEngineer): array {
+            $assignedTickets = (float) $row['assigned_tickets'];
+            $completedTickets = (float) $row['completed_tickets'];
+            $responseOnTimeCount = (float) $row['response_on_time_count'];
+            $responseBreachedCount = (float) $row['response_breached_count'];
+            $resolutionOnTimeCount = (float) $row['resolution_on_time_count'];
+            $resolutionBreachedCount = (float) $row['resolution_breached_count'];
 
             $completionRate = $this->percentage($completedTickets, $assignedTickets);
             $responseCompliance = $this->percentage($responseOnTimeCount, $responseOnTimeCount + $responseBreachedCount);
@@ -989,12 +1102,12 @@ class OperationsDashboardService
             $effectivenessScore = round(($completionRate * 0.5) + ($resolutionCompliance * 0.35) + ($responseCompliance * 0.15), 2);
 
             return [
-                'engineer_id' => (int) $row->engineer_id,
-                'engineer_name' => $row->engineer_name,
-                'department_name' => $row->department_name,
-                'assigned_tickets' => $assignedTickets,
-                'completed_tickets' => $completedTickets,
-                'open_tickets' => (int) $row->open_tickets,
+                'engineer_id' => (int) $row['engineer_id'],
+                'engineer_name' => $row['engineer_name'],
+                'department_name' => $row['department_name'],
+                'assigned_tickets' => round($assignedTickets, 2),
+                'completed_tickets' => round($completedTickets, 2),
+                'open_tickets' => round((float) $row['open_tickets'], 2),
                 'completion_rate' => $completionRate,
                 'response_on_time_count' => $responseOnTimeCount,
                 'response_breached_count' => $responseBreachedCount,
@@ -1002,9 +1115,9 @@ class OperationsDashboardService
                 'resolution_on_time_count' => $resolutionOnTimeCount,
                 'resolution_breached_count' => $resolutionBreachedCount,
                 'resolution_compliance_rate' => $resolutionCompliance,
-                'avg_response_minutes' => $row->avg_response_minutes !== null ? round((float) $row->avg_response_minutes, 2) : null,
-                'avg_resolution_minutes' => $row->avg_resolution_minutes !== null ? round((float) $row->avg_resolution_minutes, 2) : null,
-                'total_worklog_minutes' => (int) ($worklogByEngineer[(int) $row->engineer_id] ?? 0),
+                'avg_response_minutes' => $row['response_minutes_weight'] > 0 ? round($row['response_minutes_total'] / $row['response_minutes_weight'], 2) : null,
+                'avg_resolution_minutes' => $row['resolution_minutes_weight'] > 0 ? round($row['resolution_minutes_total'] / $row['resolution_minutes_weight'], 2) : null,
+                'total_worklog_minutes' => (int) ($worklogByEngineer[(int) $row['engineer_id']] ?? 0),
                 'effectiveness_score' => $effectivenessScore,
             ];
         })->sortByDesc('effectiveness_score')->values();
@@ -1020,7 +1133,10 @@ class OperationsDashboardService
     {
         $query = Ticket::query()
             ->with(['status:id,name,code', 'priority:id,name'])
-            ->where('assigned_engineer_id', $engineer->id)
+            ->where(function (Builder $builder) use ($engineer): void {
+                $builder->where('assigned_engineer_id', $engineer->id)
+                    ->orWhereHas('assignedEngineers', fn (Builder $engineerQuery) => $engineerQuery->whereKey($engineer->id));
+            })
             ->whereBetween('created_at', [$from, $to]);
 
         $this->applyTicketFilters($query, $filters);
@@ -1155,7 +1271,7 @@ class OperationsDashboardService
             return;
         }
 
-        if ($actor->hasPermission('ticket.view_all')) {
+        if ($actor->hasAnyPermission(['dashboard.view_ops', 'ticket.view_all'])) {
             return;
         }
 
@@ -1168,7 +1284,8 @@ class OperationsDashboardService
             }
 
             if ($actor->hasPermission('ticket.view_assigned')) {
-                $scopedQuery->orWhere('tickets.assigned_engineer_id', $actor->id);
+                $scopedQuery->orWhere('tickets.assigned_engineer_id', $actor->id)
+                    ->orWhereHas('assignedEngineers', fn (Builder $engineerQuery) => $engineerQuery->whereKey($actor->id));
                 $hasScope = true;
             }
 

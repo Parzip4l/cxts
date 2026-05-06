@@ -34,7 +34,7 @@ class TicketPolicy
         }
 
         if ($user->hasPermission('ticket.view_assigned')
-            && (int) $ticket->assigned_engineer_id === (int) $user->id) {
+            && $ticket->isAssignedTo($user)) {
             return true;
         }
 
@@ -104,13 +104,13 @@ class TicketPolicy
     public function work(User $user, Ticket $ticket): bool
     {
         return $user->hasPermission('engineer_task.transition_assigned')
-            && (int) $ticket->assigned_engineer_id === (int) $user->id;
+            && $ticket->isAssignedTo($user);
     }
 
     public function addWorklog(User $user, Ticket $ticket): bool
     {
         return $user->hasPermission('engineer_task.worklog_assigned')
-            && (int) $ticket->assigned_engineer_id === (int) $user->id;
+            && $ticket->isAssignedTo($user);
     }
 
     public function pendingCustomer(User $user, Ticket $ticket): bool

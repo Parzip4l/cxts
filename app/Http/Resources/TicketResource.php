@@ -50,6 +50,13 @@ class TicketResource extends JsonResource
             'assigned_team_name' => $this->assigned_team_name,
             'assigned_engineer_id' => $this->assigned_engineer_id,
             'assigned_engineer_name' => $this->whenLoaded('assignedEngineer', fn () => $this->assignedEngineer?->name),
+            'assigned_engineers' => $this->whenLoaded('assignedEngineers', fn () => $this->assignedEngineers->map(fn ($engineer) => [
+                'id' => (int) $engineer->id,
+                'name' => $engineer->name,
+                'score_share' => (float) ($engineer->pivot?->score_share ?? 0),
+                'team_name' => $engineer->pivot?->team_name,
+                'assigned_at' => $engineer->pivot?->assigned_at,
+            ])->values()),
             'requires_approval' => (bool) $this->requires_approval,
             'allow_direct_assignment' => (bool) $this->allow_direct_assignment,
             'approval_status' => $this->approval_status,

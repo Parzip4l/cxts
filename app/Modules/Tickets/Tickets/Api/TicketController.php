@@ -62,8 +62,27 @@ class TicketController extends Controller
         $payload['source'] = $payload['source'] ?? 'api';
         $payload['impact'] = $payload['impact'] ?? 'medium';
         $payload['urgency'] = $payload['urgency'] ?? 'medium';
+        $assignmentEngineerIds = collect($payload['assigned_engineer_ids'] ?? [])->filter()->unique()->values();
+        $assignmentTeamName = $payload['assigned_team_name'] ?? null;
+        $assignmentNotes = $payload['assignment_notes'] ?? null;
+        unset($payload['assigned_engineer_ids'], $payload['assigned_team_name'], $payload['assignment_notes']);
 
         $ticket = $this->ticketService->create($payload, $request->user());
+
+        if ($assignmentEngineerIds->isNotEmpty() && $request->user()?->can('assign', $ticket) && $ticket->canBeAssigned()) {
+            $engineers = User::query()
+                ->where('role', 'engineer')
+                ->whereIn('id', $assignmentEngineerIds)
+                ->get()
+                ->keyBy('id');
+
+            $orderedEngineers = $assignmentEngineerIds
+                ->map(fn ($id) => $engineers->get((int) $id))
+                ->filter()
+                ->values();
+
+            $ticket = $this->ticketService->assign($ticket, $orderedEngineers, $request->user(), $assignmentTeamName, $assignmentNotes);
+        }
 
         return (new TicketResource($ticket))
             ->response()
@@ -88,6 +107,7 @@ class TicketController extends Controller
             'assetLocation:id,name',
             'inspection:id,inspection_number',
             'assignedEngineer:id,name',
+            'assignedEngineers:id,name',
             'expectedApprover:id,name',
             'approvedBy:id,name',
             'rejectedBy:id,name',
@@ -110,11 +130,30 @@ class TicketController extends Controller
     {
         $this->authorize('assign', $ticket);
 
-        $engineer = User::query()->whereKey($request->validated('assigned_engineer_id'))->firstOrFail();
+        $validated = $request->validated();
+        $engineerIds = collect($validated['assigned_engineer_ids'] ?? [])
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($engineerIds->isEmpty() && ! empty($validated['assigned_engineer_id'])) {
+            $engineerIds = collect([(int) $validated['assigned_engineer_id']]);
+        }
+
+        $engineers = User::query()
+            ->where('role', 'engineer')
+            ->whereIn('id', $engineerIds)
+            ->get()
+            ->keyBy('id');
+
+        $orderedEngineers = $engineerIds
+            ->map(fn ($id) => $engineers->get((int) $id))
+            ->filter()
+            ->values();
 
         $updated = $this->ticketService->assign(
             ticket: $ticket,
-            assignedEngineer: $engineer,
+            assignedEngineers: $orderedEngineers,
             actor: $request->user(),
             teamName: $request->validated('assigned_team_name'),
             notes: $request->validated('notes'),

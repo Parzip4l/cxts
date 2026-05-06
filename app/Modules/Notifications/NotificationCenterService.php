@@ -143,7 +143,10 @@ class NotificationCenterService
 
         $tickets = Ticket::query()
             ->with('status:id,name')
-            ->where('assigned_engineer_id', $user->id)
+            ->where(function ($query) use ($user): void {
+                $query->where('assigned_engineer_id', $user->id)
+                    ->orWhereHas('assignedEngineers', fn ($engineerQuery) => $engineerQuery->whereKey($user->id));
+            })
             ->whereHas('status', fn ($query) => $query->where('is_closed', false))
             ->latest('last_status_changed_at')
             ->limit(10)

@@ -11,7 +11,7 @@
     $ticketCounts = [
         'total' => $tickets->total(),
         'pending_approval' => $tickets->getCollection()->filter(fn ($ticket) => $ticket->approval_status === \App\Models\Ticket::APPROVAL_STATUS_PENDING)->count(),
-        'assigned' => $tickets->getCollection()->filter(fn ($ticket) => filled($ticket->assigned_engineer_id))->count(),
+        'assigned' => $tickets->getCollection()->filter(fn ($ticket) => filled($ticket->assigned_engineer_id) || $ticket->assignedEngineers->isNotEmpty())->count(),
         'breach_risk' => $tickets->getCollection()->filter(fn ($ticket) => $ticket->response_due_at && $ticket->response_due_at->isPast() && ! $ticket->responded_at)->count(),
     ];
     $selectedStatus = filled($filters['ticket_status_id'] ?? null)
@@ -77,6 +77,17 @@
             \App\Models\Ticket::APPROVAL_STATUS_REJECTED => 'bg-danger-subtle text-danger',
             default => 'bg-secondary-subtle text-secondary',
         };
+    };
+    $ticketAssignedEngineers = fn ($ticket) => $ticket->assignedEngineers->isNotEmpty()
+        ? $ticket->assignedEngineers
+        : collect([$ticket->assignedEngineer])->filter();
+    $engineerInitials = function ($name) {
+        $parts = collect(preg_split('/\s+/', trim((string) $name)) ?: [])
+            ->filter()
+            ->take(2)
+            ->map(fn ($part) => mb_strtoupper(mb_substr($part, 0, 1)));
+
+        return $parts->implode('') ?: '?';
     };
 @endphp
 
@@ -410,8 +421,29 @@
                                 @endif
                             </td>
                             <td>
-                                <div>{{ $ticket->assignedEngineer?->name ?? '-' }}</div>
-                                <small class="text-muted">{{ $ticket->assigned_team_name ?? 'No team' }}</small>
+                                @php
+                                    $assignedEngineers = $ticketAssignedEngineers($ticket);
+                                    $hiddenEngineerCount = max(0, $assignedEngineers->count() - 2);
+                                @endphp
+                                @if ($assignedEngineers->isNotEmpty())
+                                    <div class="small text-muted mb-1">
+                                        {{ $assignedEngineers->count() > 1 ? $assignedEngineers->count() . ' engineers' : '1 engineer' }}
+                                    </div>
+                                    <div class="ticket-assignee-list">
+                                        @foreach ($assignedEngineers->take(2) as $engineer)
+                                            <span class="ticket-assignee-chip" title="{{ $engineer->name }}">
+                                                <span class="ticket-assignee-avatar">{{ $engineerInitials($engineer->name) }}</span>
+                                                <span class="ticket-assignee-name">{{ $engineer->name }}</span>
+                                            </span>
+                                        @endforeach
+                                        @if ($hiddenEngineerCount > 0)
+                                            <span class="ticket-assignee-more">+{{ $hiddenEngineerCount }}</span>
+                                        @endif
+                                    </div>
+                                @else
+                                    <div>-</div>
+                                @endif
+                                <small class="text-muted d-block mt-1">{{ $ticket->assigned_team_name ?? 'No team' }}</small>
                             </td>
                             <td>
                                 @if ($ticket->response_due_at)
@@ -459,6 +491,57 @@
     #ticket-list-table td:last-child,
     #ticket-list-table th:last-child {
         white-space: nowrap;
+    }
+
+    .ticket-assignee-list {
+        align-items: center;
+        display: flex;
+        flex-wrap: wrap;
+        gap: .35rem;
+        max-width: 260px;
+    }
+
+    .ticket-assignee-chip {
+        align-items: center;
+        background: var(--bs-light-bg-subtle);
+        border: 1px solid var(--bs-border-color);
+        border-radius: 999px;
+        display: inline-flex;
+        gap: .35rem;
+        max-width: 170px;
+        min-width: 0;
+        padding: .18rem .5rem .18rem .22rem;
+    }
+
+    .ticket-assignee-avatar {
+        align-items: center;
+        background: var(--bs-primary-bg-subtle);
+        border-radius: 50%;
+        color: var(--bs-primary);
+        display: inline-flex;
+        flex: 0 0 auto;
+        font-size: .62rem;
+        font-weight: 700;
+        height: 22px;
+        justify-content: center;
+        width: 22px;
+    }
+
+    .ticket-assignee-name {
+        font-size: .82rem;
+        font-weight: 600;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .ticket-assignee-more {
+        background: var(--bs-secondary-bg);
+        border-radius: 999px;
+        color: var(--bs-secondary-color);
+        font-size: .8rem;
+        font-weight: 700;
+        padding: .28rem .55rem;
     }
 </style>
 @endpush

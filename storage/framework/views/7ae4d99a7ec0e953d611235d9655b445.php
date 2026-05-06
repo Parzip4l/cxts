@@ -23,6 +23,9 @@
     $selectedImpact = old('impact', $ticket->impact ?: 'medium');
     $selectedUrgency = old('urgency', $ticket->urgency ?: 'medium');
     $selectedPriorityLabel = optional($priorityOptions->firstWhere('id', $selectedPriorityId))->name ?? 'Medium';
+    $selectedAssignedEngineerIds = collect(old('assigned_engineer_ids', []))
+        ->map(fn ($id) => (string) $id)
+        ->all();
 
     $initialStep = 1;
     if ($errors->hasAny(['service_id', 'asset_id', 'asset_location_id', 'context_mode'])) {
@@ -30,6 +33,9 @@
     }
     if ($errors->hasAny(['requester_id', 'requester_department_id', 'ticket_priority_id', 'source', 'impact', 'urgency', 'ticket_detail_subcategory_id'])) {
         $initialStep = 3;
+    }
+    if ($errors->hasAny(['assigned_engineer_ids', 'assigned_engineer_ids.*', 'assigned_team_name', 'assignment_notes'])) {
+        $initialStep = 4;
     }
     if ($errors->hasAny(['attachments', 'attachments.*'])) {
         $initialStep = 1;
@@ -41,12 +47,13 @@
         <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 align-items-lg-center">
             <div>
                 <div class="text-uppercase small text-muted fw-semibold mb-1">Simplified Ticket Creation</div>
-                <h4 class="mb-2">Create Ticket In 3 Steps</h4>
+                <h4 class="mb-2">Create Ticket In 4 Steps</h4>
             </div>
             <div class="small text-muted">
                 <div>1. Masalah apa yang terjadi</div>
                 <div>2. Apa yang terdampak</div>
                 <div>3. Review dan triage operasional</div>
+                <div>4. Assignment engineer opsional</div>
             </div>
         </div>
     </div>
@@ -70,6 +77,10 @@
                     <button type="button" class="btn btn-outline-primary text-start px-3 py-3 flex-fill" data-step-trigger="3">
                         <div class="fw-semibold">Step 3</div>
                         <div class="small text-muted">Review & Triage</div>
+                    </button>
+                    <button type="button" class="btn btn-outline-primary text-start px-3 py-3 flex-fill" data-step-trigger="4">
+                        <div class="fw-semibold">Step 4</div>
+                        <div class="small text-muted">Engineer Assignment</div>
                     </button>
                 </div>
             </div>
@@ -263,7 +274,7 @@ unset($__errorArgs, $__bag); ?>"
                                 accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
                                 multiple
                             >
-                            <div class="form-text">Opsional. Maksimal 5 foto, masing-masing maksimal 5MB. Format yang diizinkan: JPG, PNG, WEBP.</div>
+                            <div class="form-text">Maksimal 1MB. Format yang diizinkan: JPG, PNG, WEBP.</div>
                             <?php $__errorArgs = ['attachments'];
 $__bag = $errors->getBag($__errorArgs[1] ?? 'default');
 if ($__bag->has($__errorArgs[0])) :
@@ -673,6 +684,148 @@ unset($__errorArgs, $__bag); ?>
                         <input type="hidden" name="source" value="<?php echo e($selectedSource); ?>">
                         <input type="hidden" name="impact" value="<?php echo e($selectedImpact); ?>">
                         <input type="hidden" name="urgency" value="<?php echo e($selectedUrgency); ?>">
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <div class="col-12 d-none" data-step-panel="4">
+                <div class="border rounded-3 p-3 p-lg-4 bg-light-subtle">
+                    <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                        <div>
+                            <div class="text-uppercase small text-muted fw-semibold mb-1">Step 4</div>
+                            <h5 class="mb-1">Assign Engineer</h5>
+                            <p class="text-muted mb-0">Pilih satu atau beberapa engineer jika ticket langsung boleh di-assign setelah dibuat.</p>
+                        </div>
+                        <div class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-2">Optional Dispatch</div>
+                    </div>
+
+                    <?php if($canUseOperationalTriage): ?>
+                        <div class="alert alert-info border">
+                            Assignment di step ini akan diproses otomatis jika ticket tidak tertahan approval atau readiness gate. Jika ticket butuh approval, pilihan engineer tetap tidak memaksa bypass governance.
+                        </div>
+
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label for="assigned_engineer_ids" class="form-label">Engineer</label>
+                                <select
+                                    id="assigned_engineer_ids"
+                                    name="assigned_engineer_ids[]"
+                                    class="form-select <?php $__errorArgs = ['assigned_engineer_ids'];
+$__bag = $errors->getBag($__errorArgs[1] ?? 'default');
+if ($__bag->has($__errorArgs[0])) :
+if (isset($message)) { $__messageOriginal = $message; }
+$message = $__bag->first($__errorArgs[0]); ?> is-invalid <?php unset($message);
+if (isset($__messageOriginal)) { $message = $__messageOriginal; }
+endif;
+unset($__errorArgs, $__bag); ?> <?php $__errorArgs = ['assigned_engineer_ids.*'];
+$__bag = $errors->getBag($__errorArgs[1] ?? 'default');
+if ($__bag->has($__errorArgs[0])) :
+if (isset($message)) { $__messageOriginal = $message; }
+$message = $__bag->first($__errorArgs[0]); ?> is-invalid <?php unset($message);
+if (isset($__messageOriginal)) { $message = $__messageOriginal; }
+endif;
+unset($__errorArgs, $__bag); ?>"
+                                    data-searchable-select
+                                    data-force-searchable-select="true"
+                                    data-search-placeholder="Search engineer"
+                                    multiple
+                                >
+                                    <?php $__currentLoopData = $engineerOptions; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $option): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+                                        <option value="<?php echo e($option->id); ?>" <?php if(in_array((string) $option->id, $selectedAssignedEngineerIds, true)): echo 'selected'; endif; ?>>
+                                            <?php echo e($option->name); ?>
+
+                                            <?php if($option->department): ?>
+                                                - <?php echo e($option->department->name); ?>
+
+                                            <?php endif; ?>
+                                        </option>
+                                    <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?>
+                                </select>
+                                <div class="form-text">Bisa pilih lebih dari satu engineer. Score ticket akan dibagi rata ke semua engineer aktif.</div>
+                                <?php $__errorArgs = ['assigned_engineer_ids'];
+$__bag = $errors->getBag($__errorArgs[1] ?? 'default');
+if ($__bag->has($__errorArgs[0])) :
+if (isset($message)) { $__messageOriginal = $message; }
+$message = $__bag->first($__errorArgs[0]); ?>
+                                    <div class="invalid-feedback"><?php echo e($message); ?></div>
+                                <?php unset($message);
+if (isset($__messageOriginal)) { $message = $__messageOriginal; }
+endif;
+unset($__errorArgs, $__bag); ?>
+                                <?php $__errorArgs = ['assigned_engineer_ids.*'];
+$__bag = $errors->getBag($__errorArgs[1] ?? 'default');
+if ($__bag->has($__errorArgs[0])) :
+if (isset($message)) { $__messageOriginal = $message; }
+$message = $__bag->first($__errorArgs[0]); ?>
+                                    <div class="invalid-feedback d-block"><?php echo e($message); ?></div>
+                                <?php unset($message);
+if (isset($__messageOriginal)) { $message = $__messageOriginal; }
+endif;
+unset($__errorArgs, $__bag); ?>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label for="assigned_team_name" class="form-label">Team</label>
+                                <input
+                                    type="text"
+                                    id="assigned_team_name"
+                                    name="assigned_team_name"
+                                    class="form-control <?php $__errorArgs = ['assigned_team_name'];
+$__bag = $errors->getBag($__errorArgs[1] ?? 'default');
+if ($__bag->has($__errorArgs[0])) :
+if (isset($message)) { $__messageOriginal = $message; }
+$message = $__bag->first($__errorArgs[0]); ?> is-invalid <?php unset($message);
+if (isset($__messageOriginal)) { $message = $__messageOriginal; }
+endif;
+unset($__errorArgs, $__bag); ?>"
+                                    value="<?php echo e(old('assigned_team_name')); ?>"
+                                    placeholder="Ops / Field Team"
+                                >
+                                <?php $__errorArgs = ['assigned_team_name'];
+$__bag = $errors->getBag($__errorArgs[1] ?? 'default');
+if ($__bag->has($__errorArgs[0])) :
+if (isset($message)) { $__messageOriginal = $message; }
+$message = $__bag->first($__errorArgs[0]); ?>
+                                    <div class="invalid-feedback"><?php echo e($message); ?></div>
+                                <?php unset($message);
+if (isset($__messageOriginal)) { $message = $__messageOriginal; }
+endif;
+unset($__errorArgs, $__bag); ?>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label for="assignment_notes" class="form-label">Assignment Notes</label>
+                                <input
+                                    type="text"
+                                    id="assignment_notes"
+                                    name="assignment_notes"
+                                    class="form-control <?php $__errorArgs = ['assignment_notes'];
+$__bag = $errors->getBag($__errorArgs[1] ?? 'default');
+if ($__bag->has($__errorArgs[0])) :
+if (isset($message)) { $__messageOriginal = $message; }
+$message = $__bag->first($__errorArgs[0]); ?> is-invalid <?php unset($message);
+if (isset($__messageOriginal)) { $message = $__messageOriginal; }
+endif;
+unset($__errorArgs, $__bag); ?>"
+                                    value="<?php echo e(old('assignment_notes')); ?>"
+                                    placeholder="Instruksi singkat untuk engineer"
+                                >
+                                <?php $__errorArgs = ['assignment_notes'];
+$__bag = $errors->getBag($__errorArgs[1] ?? 'default');
+if ($__bag->has($__errorArgs[0])) :
+if (isset($message)) { $__messageOriginal = $message; }
+$message = $__bag->first($__errorArgs[0]); ?>
+                                    <div class="invalid-feedback"><?php echo e($message); ?></div>
+                                <?php unset($message);
+if (isset($__messageOriginal)) { $message = $__messageOriginal; }
+endif;
+unset($__errorArgs, $__bag); ?>
+                            </div>
+                        </div>
+                    <?php else: ?>
+                        <div class="alert alert-light border mb-0">
+                            Assignment engineer dilakukan oleh supervisor atau admin setelah ticket dibuat.
+                        </div>
                     <?php endif; ?>
                 </div>
             </div>
