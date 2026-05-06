@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Inspection;
 use App\Models\Ticket;
 use App\Models\UserPushToken;
+use App\Services\Notifications\FirebasePushService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -92,6 +93,27 @@ class MobileNotificationController extends Controller
         ]);
     }
 
+    public function testPush(Request $request, FirebasePushService $firebasePushService): JsonResponse
+    {
+        $validated = $request->validate([
+            'title' => ['nullable', 'string', 'max:120'],
+            'body' => ['nullable', 'string', 'max:240'],
+        ]);
+
+        $result = $firebasePushService->sendTestToUserId(
+            userId: $request->user()->id,
+            title: $validated['title'] ?? 'CXTS test push',
+            body: $validated['body'] ?? 'Push notification test dari CXTS.',
+        );
+
+        return response()->json([
+            'message' => $result['sent_count'] > 0
+                ? 'Test push sent.'
+                : 'Test push was not sent.',
+            'data' => $result,
+        ], $result['sent_count'] > 0 ? 200 : 422);
+    }
+
     private function ticketNotifications(int $userId, int $limit): Collection
     {
         return Ticket::query()
@@ -168,4 +190,3 @@ class MobileNotificationController extends Controller
             });
     }
 }
-

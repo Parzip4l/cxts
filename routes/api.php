@@ -96,6 +96,7 @@ Route::prefix('v1')->name('api.v1.')->group(function (): void {
             Route::post('/notifications/device-token', [MobileNotificationController::class, 'storeDeviceToken'])->name('notifications.device-token.store');
             Route::delete('/notifications/device-token', [MobileNotificationController::class, 'destroyDeviceToken'])->name('notifications.device-token.destroy');
             Route::get('/notifications/firebase-config', [MobileNotificationController::class, 'firebaseConfig'])->name('notifications.firebase-config');
+            Route::post('/notifications/test-push', [MobileNotificationController::class, 'testPush'])->name('notifications.test-push');
         });
 
         Route::prefix('/engineer')->name('engineer.')->middleware('permission:engineer_task.view_assigned')->group(function (): void {

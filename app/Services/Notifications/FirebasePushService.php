@@ -10,6 +10,69 @@ use Illuminate\Support\Facades\Log;
 
 class FirebasePushService
 {
+    public function sendTestToUserId(int $userId, string $title = 'Test push notification', string $body = 'CXTS push notification test.'): array
+    {
+        $result = [
+            'firebase_enabled' => (bool) config('firebase.enabled'),
+            'project_id' => (string) config('firebase.project_id'),
+            'token_count' => 0,
+            'sent_count' => 0,
+            'failed_count' => 0,
+            'results' => [],
+        ];
+
+        if (! $result['firebase_enabled']) {
+            $result['message'] = 'Firebase push is disabled.';
+            return $result;
+        }
+
+        if ($result['project_id'] === '') {
+            $result['message'] = 'FIREBASE_PROJECT_ID is empty.';
+            return $result;
+        }
+
+        $tokens = UserPushToken::query()
+            ->where('is_active', true)
+            ->where('user_id', $userId)
+            ->get(['id', 'token', 'platform', 'last_used_at']);
+
+        $result['token_count'] = $tokens->count();
+        if ($tokens->isEmpty()) {
+            $result['message'] = 'No active push token found for this user.';
+            return $result;
+        }
+
+        $accessToken = $this->accessToken();
+        if ($accessToken === null) {
+            $result['message'] = 'Unable to fetch Firebase access token.';
+            return $result;
+        }
+
+        foreach ($tokens as $token) {
+            $sendResult = $this->sendMessage(
+                (string) $result['project_id'],
+                $accessToken,
+                (string) $token->token,
+                $title,
+                $body,
+                [
+                    'type' => 'test_push',
+                    'screen' => 'notifications',
+                    'sent_at' => now()->toIso8601String(),
+                ],
+            );
+
+            $sendResult['token_id'] = $token->id;
+            $sendResult['platform'] = $token->platform;
+            unset($sendResult['device_token']);
+
+            $result['results'][] = $sendResult;
+            $sendResult['success'] ? $result['sent_count']++ : $result['failed_count']++;
+        }
+
+        return $result;
+    }
+
     public function sendTicketCreated(Ticket $ticket): void
     {
         $this->sendToAssignedEngineers(
@@ -104,7 +167,7 @@ class FirebasePushService
         });
     }
 
-    private function sendMessage(string $projectId, string $accessToken, string $deviceToken, string $title, string $body, array $data): void
+    private function sendMessage(string $projectId, string $accessToken, string $deviceToken, string $title, string $body, array $data): array
     {
         try {
             $response = Http::withToken($accessToken)
@@ -133,7 +196,11 @@ class FirebasePushService
                 ]);
 
             if ($response->successful()) {
-                return;
+                return [
+                    'success' => true,
+                    'status' => $response->status(),
+                    'message_id' => (string) $response->json('name', ''),
+                ];
             }
 
             $this->handleFailedToken($deviceToken, $response->json());
@@ -141,10 +208,23 @@ class FirebasePushService
                 'status' => $response->status(),
                 'body' => $response->body(),
             ]);
+
+            return [
+                'success' => false,
+                'status' => $response->status(),
+                'error' => $response->json('error.message') ?? $response->body(),
+                'error_code' => data_get($response->json(), 'error.details.0.errorCode') ?? $response->json('error.status'),
+            ];
         } catch (\Throwable $exception) {
             Log::warning('Firebase push exception.', [
                 'message' => $exception->getMessage(),
             ]);
+
+            return [
+                'success' => false,
+                'status' => null,
+                'error' => $exception->getMessage(),
+            ];
         }
     }
 
