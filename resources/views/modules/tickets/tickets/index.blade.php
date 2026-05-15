@@ -152,7 +152,11 @@
     </div>
     <div class="card-body pt-3">
         @if (session('success'))
-            <div class="alert alert-success">{{ session('success') }}</div>
+            <div
+                class="alert alert-success"
+                id="ticket-list-success-alert"
+                tabindex="-1"
+            >{{ session('success') }}</div>
         @endif
 
         <form method="GET" class="mb-3" id="ticket-list-filter-form">
@@ -169,7 +173,7 @@
                         <a href="{{ route('tickets.index') }}" class="btn btn-outline-light">Reset</a>
                         <button class="btn btn-primary" type="submit">Apply Filters</button>
                         @can('create', \App\Models\Ticket::class)
-                            <a href="{{ route('tickets.create') }}" class="btn btn-dark">Create Ticket</a>
+                            <button type="button" class="btn btn-dark" data-bs-toggle="modal" data-bs-target="#createTicketModal">Create Ticket</button>
                         @endcan
                     </div>
                 </div>
@@ -386,7 +390,14 @@
                 </thead>
                 <tbody>
                     @forelse ($tickets as $ticket)
-                        <tr>
+                        <tr
+                            @class([
+                                'ticket-created-row' => (int) session('created_ticket_id') === (int) $ticket->id,
+                            ])
+                            @if ((int) session('created_ticket_id') === (int) $ticket->id)
+                                data-created-ticket-row="true"
+                            @endif
+                        >
                             <td>
                                 <div class="fw-semibold">{{ $ticket->ticket_number }}</div>
                                 <small class="text-muted">{{ optional($ticket->created_at)->format('d M Y H:i') }}</small>
@@ -456,7 +467,12 @@
                                 @endif
                             </td>
                             <td class="text-end">
-                                <a href="{{ route('tickets.show', $ticket) }}" class="btn btn-sm btn-outline-primary">Detail</a>
+                                <div class="d-inline-flex gap-2">
+                                    @can('update', $ticket)
+                                        <a href="{{ route('tickets.edit', $ticket) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
+                                    @endcan
+                                    <a href="{{ route('tickets.show', $ticket) }}" class="btn btn-sm btn-outline-primary">Detail</a>
+                                </div>
                             </td>
                         </tr>
                     @empty
@@ -471,6 +487,29 @@
         <div class="mt-3">{{ $tickets->links() }}</div>
     </div>
 </div>
+
+@can('create', \App\Models\Ticket::class)
+    <div class="modal fade" id="createTicketModal" tabindex="-1" aria-labelledby="createTicketModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header">
+                    <div>
+                        <h5 class="modal-title" id="createTicketModalLabel">Create Ticket</h5>
+                        <div class="small text-muted">Buat ticket baru tanpa meninggalkan halaman Ticket List.</div>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    @include('modules.tickets.tickets.partials.create-form-fields', [
+                        'isModal' => true,
+                        'formId' => 'ticket-create-modal-form',
+                        'returnTo' => $createTicketReturnTo ?? route('tickets.index'),
+                    ])
+                </div>
+            </div>
+        </div>
+    </div>
+@endcan
 @endsection
 
 @push('styles')
@@ -543,19 +582,76 @@
         font-weight: 700;
         padding: .28rem .55rem;
     }
+
+    #createTicketModal .modal-dialog {
+        max-width: min(1140px, calc(100vw - 2rem));
+    }
+
+    #ticket-list-table tbody tr.ticket-created-row {
+        --ticket-created-row-glow: rgba(var(--bs-success-rgb), .18);
+        animation: ticket-created-row-pulse 4.5s ease-out 1;
+        background: linear-gradient(90deg, rgba(var(--bs-success-rgb), .12), transparent 28%);
+        box-shadow: inset 4px 0 0 rgba(var(--bs-success-rgb), .9);
+    }
+
+    @keyframes ticket-created-row-pulse {
+        0% {
+            background-color: rgba(var(--bs-success-rgb), .22);
+            box-shadow: inset 4px 0 0 rgba(var(--bs-success-rgb), 1), 0 0 0 0 var(--ticket-created-row-glow);
+        }
+
+        35% {
+            background-color: rgba(var(--bs-success-rgb), .14);
+            box-shadow: inset 4px 0 0 rgba(var(--bs-success-rgb), .95), 0 0 0 8px rgba(var(--bs-success-rgb), 0);
+        }
+
+        100% {
+            background-color: transparent;
+            box-shadow: inset 4px 0 0 rgba(var(--bs-success-rgb), .9), 0 0 0 0 rgba(var(--bs-success-rgb), 0);
+        }
+    }
 </style>
 @endpush
 
 @push('scripts')
+@include('modules.tickets.tickets.partials.create-form-script')
 <script>
     document.addEventListener('DOMContentLoaded', () => {
         const form = document.getElementById('ticket-list-filter-form');
         const ticketTable = document.getElementById('ticket-list-table');
         const columnToggles = document.querySelectorAll('[data-column-toggle]');
         const columnStorageKey = 'ticket_list_optional_columns';
+        const successAlert = document.getElementById('ticket-list-success-alert');
+        const createdTicketRow = document.querySelector('[data-created-ticket-row="true"]');
 
         if (!form) {
             return;
+        }
+
+        @if (session('ticket_created_from_modal'))
+            if (successAlert) {
+                document.body.classList.remove('modal-open');
+                document.querySelectorAll('.modal-backdrop').forEach((backdrop) => backdrop.remove());
+
+                window.requestAnimationFrame(() => {
+                    successAlert.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start',
+                    });
+
+                    window.setTimeout(() => {
+                        successAlert.focus({
+                            preventScroll: true,
+                        });
+                    }, 250);
+                });
+            }
+        @endif
+
+        if (createdTicketRow) {
+            window.setTimeout(() => {
+                createdTicketRow.classList.remove('ticket-created-row');
+            }, 5000);
         }
 
         const categorySelect = form.querySelector('[name="ticket_category_id"]');
@@ -705,4 +801,18 @@
         });
     });
 </script>
+@can('create', \App\Models\Ticket::class)
+    @if ($errors->any() || request()->boolean('open_create_modal'))
+        <script>
+            document.addEventListener('DOMContentLoaded', function () {
+                const modalElement = document.getElementById('createTicketModal');
+                if (!modalElement || !window.bootstrap) {
+                    return;
+                }
+
+                window.bootstrap.Modal.getOrCreateInstance(modalElement).show();
+            });
+        </script>
+    @endif
+@endcan
 @endpush

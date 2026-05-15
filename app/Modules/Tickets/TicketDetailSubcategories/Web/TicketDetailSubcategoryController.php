@@ -36,7 +36,7 @@ class TicketDetailSubcategoryController extends Controller
         return view('modules.tickets.detail-subcategories.index', [
             'ticketDetailSubcategories' => $this->ticketDetailSubcategoryService->paginate($filters),
             'filters' => $filters,
-            'categoryOptions' => TicketSubcategory::query()->with('category:id,name')->orderBy('name')->get(['id', 'name', 'ticket_category_id']),
+            'categoryOptions' => TicketSubcategory::query()->with('category:id,name,code')->orderBy('name')->get(['id', 'code', 'name', 'ticket_category_id']),
         ]);
     }
 
@@ -44,7 +44,7 @@ class TicketDetailSubcategoryController extends Controller
     {
         return view('modules.tickets.detail-subcategories.form', [
             'ticketDetailSubcategory' => new TicketDetailSubcategory(),
-            'categoryOptions' => TicketSubcategory::query()->with('category:id,name')->orderBy('name')->get(['id', 'name', 'ticket_category_id']),
+            'categoryOptions' => TicketSubcategory::query()->with('category:id,name,code')->orderBy('name')->get(['id', 'code', 'name', 'ticket_category_id']),
             'skillOptions' => EngineerSkill::query()->where('is_active', true)->orderBy('name')->get(['id', 'name']),
             'approverOptions' => User::query()->whereIn('role', ['super_admin', 'operational_admin', 'supervisor'])->orderBy('name')->get(['id', 'name', 'role']),
             'approverStrategyOptions' => TicketCategory::approverStrategies(),
@@ -68,7 +68,7 @@ class TicketDetailSubcategoryController extends Controller
     {
         return view('modules.tickets.detail-subcategories.form', [
             'ticketDetailSubcategory' => $ticketDetailSubcategory->load('engineerSkills:id,name'),
-            'categoryOptions' => TicketSubcategory::query()->with('category:id,name')->orderBy('name')->get(['id', 'name', 'ticket_category_id']),
+            'categoryOptions' => TicketSubcategory::query()->with('category:id,name,code')->orderBy('name')->get(['id', 'code', 'name', 'ticket_category_id']),
             'skillOptions' => EngineerSkill::query()->where('is_active', true)->orderBy('name')->get(['id', 'name']),
             'approverOptions' => User::query()->whereIn('role', ['super_admin', 'operational_admin', 'supervisor'])->orderBy('name')->get(['id', 'name', 'role']),
             'approverStrategyOptions' => TicketCategory::approverStrategies(),

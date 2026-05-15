@@ -19,10 +19,12 @@ use App\Services\Tickets\EngineerRecommendationService;
 use App\Modules\Tickets\Tickets\Requests\AssignTicketRequest;
 use App\Modules\Tickets\Tickets\Requests\StoreTicketRequest;
 use App\Modules\Tickets\Tickets\Requests\TicketDecisionRequest;
+use App\Modules\Tickets\Tickets\Requests\UpdateTicketRequest;
 use App\Modules\Tickets\Tickets\TicketService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Arr;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Illuminate\View\View;
 
@@ -59,7 +61,7 @@ class TicketController extends Controller
 
         $tickets = $this->ticketService->paginate($filters, actor: $request->user());
 
-        return view('modules.tickets.tickets.index', [
+        $viewData = [
             'tickets' => $tickets,
             'filters' => $filters,
             'statusOptions' => TicketStatus::query()->orderBy('name')->get(['id', 'name']),
@@ -76,36 +78,25 @@ class TicketController extends Controller
                 Ticket::APPROVAL_STATUS_APPROVED => 'Approved',
                 Ticket::APPROVAL_STATUS_REJECTED => 'Rejected',
             ],
-        ]);
+        ];
+
+        if ($request->user()?->can('create', Ticket::class)) {
+            $viewData = [
+                ...$viewData,
+                ...$this->createFormViewData($request),
+                'createTicketReturnTo' => $request->fullUrl(),
+            ];
+        }
+
+        return view('modules.tickets.tickets.index', $viewData);
     }
 
-    public function create(Request $request): View
+    public function create(Request $request): RedirectResponse
     {
         $this->authorize('create', Ticket::class);
 
-        $authUser = $request->user();
-        $priorityOptions = TicketPriority::query()->where('is_active', true)->orderBy('level')->get(['id', 'code', 'name']);
-
-        return view('modules.tickets.tickets.form', [
-            'action' => route('tickets.store'),
-            'ticket' => new Ticket(),
-            'requesterOptions' => User::query()->orderBy('name')->get(['id', 'name']),
-            'requesterDepartmentOptions' => Department::query()->orderBy('name')->get(['id', 'name']),
-            'categoryOptions' => TicketCategory::query()->where('is_active', true)->orderBy('name')->get(['id', 'name']),
-            'subcategoryOptions' => TicketSubcategory::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'ticket_category_id']),
-            'detailSubcategoryOptions' => TicketDetailSubcategory::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'ticket_subcategory_id']),
-            'priorityOptions' => $priorityOptions,
-            'serviceOptions' => ServiceCatalog::query()->where('is_active', true)->orderBy('name')->get(['id', 'name']),
-            'assetOptions' => Asset::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'service_id', 'asset_location_id', 'asset_category_id']),
-            'locationOptions' => AssetLocation::query()->where('is_active', true)->orderBy('name')->get(['id', 'name']),
-            'engineerOptions' => User::query()
-                ->where('role', 'engineer')
-                ->with(['department:id,name', 'engineerSkills:id,name'])
-                ->orderBy('name')
-                ->get(['id', 'name', 'department_id']),
-            'defaultRequesterId' => $authUser?->id,
-            'defaultRequesterDepartmentId' => $authUser?->department_id,
-            'defaultPriorityId' => $this->resolveDefaultPriorityId($priorityOptions),
+        return redirect()->route('tickets.index', [
+            'open_create_modal' => 1,
         ]);
     }
 
@@ -159,6 +150,16 @@ class TicketController extends Controller
             } else {
                 $assignmentMessage = ' Engineer selection was not processed because this ticket must pass approval/readiness gate before assignment.';
             }
+        }
+
+        $returnTo = $this->resolveReturnUrl($request);
+
+        if ($returnTo !== null) {
+            return redirect()
+                ->to($returnTo)
+                ->with('success', 'Ticket has been created.'.$assignmentMessage)
+                ->with('ticket_created_from_modal', true)
+                ->with('created_ticket_id', $ticket->id);
         }
 
         return redirect()
@@ -215,8 +216,8 @@ class TicketController extends Controller
             'department_id' => $request->filled('assignment_department_id')
                 ? (int) $request->integer('assignment_department_id')
                 : null,
-            'team_label' => $request->filled('assignment_team_label')
-                ? trim((string) $request->string('assignment_team_label'))
+            'engineer_team_label' => $request->filled('assignment_engineer_team_label')
+                ? trim((string) $request->string('assignment_engineer_team_label'))
                 : null,
         ];
         $engineerRecommendation = $this->filterRecommendation($engineerRecommendation, $assignmentFilters);
@@ -238,13 +239,77 @@ class TicketController extends Controller
                 ->unique('id')
                 ->sortBy('name')
                 ->values(),
-            'assignmentTeamOptions' => $allRecommendationOptions
-                ->pluck('team_label')
+            'assignmentEngineerTeamOptions' => $allRecommendationOptions
+                ->pluck('engineer_team_label')
                 ->filter()
                 ->unique()
                 ->sort()
                 ->values(),
         ]);
+    }
+
+    public function edit(Request $request, Ticket $ticket): View
+    {
+        $this->authorize('update', $ticket);
+
+        $ticket->load([
+            'assignedEngineer:id,name',
+            'assignedEngineers:id,name',
+            'assignedEngineers.department:id,name',
+            'assignments' => fn ($query) => $query->latest()->limit(1),
+        ]);
+
+        return view('modules.tickets.tickets.edit', [
+            'ticket' => $ticket,
+            'engineerOptions' => User::query()
+                ->where('role', 'engineer')
+                ->with('department:id,name')
+                ->orderBy('name')
+                ->get(['id', 'name', 'department_id']),
+            'canManageAssignment' => ($request->user()?->can('assign', $ticket) ?? false) && $ticket->canBeAssigned(),
+        ]);
+    }
+
+    public function update(UpdateTicketRequest $request, Ticket $ticket): RedirectResponse
+    {
+        $this->authorize('update', $ticket);
+
+        $validated = $request->validated();
+        $this->ticketService->updateDetails($ticket, Arr::only($validated, ['title', 'description']), $request->user());
+
+        if (($request->user()?->can('assign', $ticket) ?? false) && $ticket->canBeAssigned()) {
+            $engineerIds = collect($validated['assigned_engineer_ids'] ?? [])
+                ->filter()
+                ->unique()
+                ->values();
+
+            if ($engineerIds->isNotEmpty()) {
+                $engineers = User::query()
+                    ->where('role', 'engineer')
+                    ->whereIn('id', $engineerIds)
+                    ->get()
+                    ->keyBy('id');
+
+                $orderedEngineers = $engineerIds
+                    ->map(fn ($id) => $engineers->get((int) $id))
+                    ->filter()
+                    ->values();
+
+                if ($orderedEngineers->isNotEmpty()) {
+                    $this->ticketService->assign(
+                        ticket: $ticket,
+                        assignedEngineers: $orderedEngineers,
+                        actor: $request->user(),
+                        teamName: $validated['assigned_team_name'] ?? null,
+                        notes: $validated['assignment_notes'] ?? null,
+                    );
+                }
+            }
+        }
+
+        return redirect()
+            ->route('tickets.show', $ticket)
+            ->with('success', 'Ticket has been updated without cancelling the assignment history.');
     }
 
     public function assign(AssignTicketRequest $request, Ticket $ticket): RedirectResponse
@@ -390,18 +455,63 @@ class TicketController extends Controller
         return $defaultPriority?->id;
     }
 
+    private function createFormViewData(Request $request): array
+    {
+        $authUser = $request->user();
+        $priorityOptions = TicketPriority::query()->where('is_active', true)->orderBy('level')->get(['id', 'code', 'name']);
+
+        return [
+            'action' => route('tickets.store'),
+            'ticket' => new Ticket(),
+            'requesterOptions' => User::query()->orderBy('name')->get(['id', 'name']),
+            'requesterDepartmentOptions' => Department::query()->orderBy('name')->get(['id', 'name']),
+            'categoryOptions' => TicketCategory::query()->where('is_active', true)->orderBy('name')->get(['id', 'name']),
+            'subcategoryOptions' => TicketSubcategory::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'ticket_category_id']),
+            'detailSubcategoryOptions' => TicketDetailSubcategory::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'ticket_subcategory_id']),
+            'priorityOptions' => $priorityOptions,
+            'serviceOptions' => ServiceCatalog::query()->where('is_active', true)->orderBy('name')->get(['id', 'name']),
+            'assetOptions' => Asset::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'service_id', 'asset_location_id', 'asset_category_id']),
+            'locationOptions' => AssetLocation::query()->where('is_active', true)->orderBy('name')->get(['id', 'name']),
+            'engineerOptions' => User::query()
+                ->where('role', 'engineer')
+                ->with(['department:id,name', 'engineerSkills:id,name'])
+                ->orderBy('name')
+                ->get(['id', 'name', 'department_id']),
+            'defaultRequesterId' => $authUser?->id,
+            'defaultRequesterDepartmentId' => $authUser?->department_id,
+            'defaultPriorityId' => $this->resolveDefaultPriorityId($priorityOptions),
+        ];
+    }
+
+    private function resolveReturnUrl(Request $request): ?string
+    {
+        $returnTo = trim((string) $request->input('return_to', ''));
+
+        if ($returnTo === '') {
+            return null;
+        }
+
+        $host = parse_url($returnTo, PHP_URL_HOST);
+
+        if ($host !== null && $host !== $request->getHost()) {
+            return null;
+        }
+
+        return $returnTo;
+    }
+
     private function filterRecommendation(array $recommendation, array $filters): array
     {
         $departmentId = $filters['department_id'] ?? null;
-        $teamLabel = $filters['team_label'] ?? null;
+        $engineerTeamLabel = $filters['engineer_team_label'] ?? null;
 
-        $applyFilters = function ($engineers) use ($departmentId, $teamLabel) {
+        $applyFilters = function ($engineers) use ($departmentId, $engineerTeamLabel) {
             return collect($engineers)
                 ->when($departmentId, fn ($collection) => $collection->filter(
                     fn ($engineer) => (int) ($engineer->department_id ?? 0) === (int) $departmentId
                 ))
-                ->when($teamLabel, fn ($collection) => $collection->filter(
-                    fn ($engineer) => strcasecmp((string) ($engineer->team_label ?? ''), (string) $teamLabel) === 0
+                ->when($engineerTeamLabel, fn ($collection) => $collection->filter(
+                    fn ($engineer) => strcasecmp((string) ($engineer->engineer_team_label ?? $engineer->department_name ?? ''), (string) $engineerTeamLabel) === 0
                 ))
                 ->values();
         };

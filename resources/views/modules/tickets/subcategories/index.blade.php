@@ -15,11 +15,11 @@
                     value="{{ $filters['search'] ?? '' }}">
             </div>
             <div class="col-md-3">
-                <select name="ticket_category_id" class="form-select">
+                <select name="ticket_category_id" class="form-select" data-searchable-select data-search-placeholder="Search ticket type code or name">
                     <option value="">All ticket types</option>
                     @foreach ($categoryOptions as $option)
                         <option value="{{ $option->id }}" @selected((string) ($filters['ticket_category_id'] ?? '') === (string) $option->id)>
-                            {{ $option->name }}
+                            {{ $option->code }} - {{ $option->name }}
                         </option>
                     @endforeach
                 </select>

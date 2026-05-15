@@ -1,5 +1,8 @@
-<?php $__env->startSection('content'); ?>
-<?php echo $__env->make('layouts.partials.page-title', ['title' => 'Ticketing', 'subtitle' => 'Create Ticket'], \Illuminate\Support\Arr::except(get_defined_vars(), ['__data', '__path']))->render(); ?>
+<?php
+    $isModal = $isModal ?? false;
+    $formId = $formId ?? 'ticket-create-form';
+    $returnTo = $returnTo ?? null;
+?>
 
 <?php
     $userRole = auth()->user()?->role;
@@ -47,27 +50,32 @@
     $engineerTeamNameOptions = $groupedEngineerOptions->keys()->filter()->values();
 ?>
 
-<div class="card border-0 shadow-sm mb-3">
-    <div class="card-body p-4">
-        <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 align-items-lg-center">
-            <div>
-                <div class="text-uppercase small text-muted fw-semibold mb-1">Simplified Ticket Creation</div>
-                <h4 class="mb-2">Create Ticket In 4 Steps</h4>
-            </div>
-            <div class="small text-muted">
-                <div>1. Masalah apa yang terjadi</div>
-                <div>2. Apa yang terdampak</div>
-                <div>3. Review dan triage operasional</div>
-                <div>4. Assignment engineer opsional</div>
+<?php if(! $isModal): ?>
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-body p-4">
+            <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 align-items-lg-center">
+                <div>
+                    <div class="text-uppercase small text-muted fw-semibold mb-1">Simplified Ticket Creation</div>
+                    <h4 class="mb-2">Create Ticket In 4 Steps</h4>
+                </div>
+                <div class="small text-muted">
+                    <div>1. Masalah apa yang terjadi</div>
+                    <div>2. Apa yang terdampak</div>
+                    <div>3. Review dan triage operasional</div>
+                    <div>4. Assignment engineer opsional</div>
+                </div>
             </div>
         </div>
     </div>
-</div>
+<?php endif; ?>
 
-<div class="card">
-    <div class="card-body p-4">
-        <form method="POST" action="<?php echo e($action); ?>" enctype="multipart/form-data" class="row g-4" id="ticket-create-form" data-initial-step="<?php echo e($initialStep); ?>">
+<div class="card <?php echo e($isModal ? 'border-0 shadow-none mb-0' : ''); ?>">
+    <div class="card-body <?php echo e($isModal ? 'p-0' : 'p-4'); ?>">
+        <form method="POST" action="<?php echo e($action); ?>" enctype="multipart/form-data" class="row g-4" id="<?php echo e($formId); ?>" data-ticket-create-form data-initial-step="<?php echo e($initialStep); ?>">
             <?php echo csrf_field(); ?>
+            <?php if($returnTo): ?>
+                <input type="hidden" name="return_to" value="<?php echo e($returnTo); ?>">
+            <?php endif; ?>
 
             <div class="col-12">
                 <div class="d-flex flex-column flex-lg-row gap-2 gap-lg-3" data-stepper>
@@ -102,10 +110,10 @@
 
                     <div class="row g-3">
                         <div class="col-md-8">
-                            <label for="title" class="form-label">Issue Summary</label>
+                            <label for="<?php echo e($formId); ?>-title" class="form-label">Issue Summary</label>
                             <input
                                 type="text"
-                                id="title"
+                                id="<?php echo e($formId); ?>-title"
                                 name="title"
                                 class="form-control <?php $__errorArgs = ['title'];
 $__bag = $errors->getBag($__errorArgs[1] ?? 'default');
@@ -133,8 +141,8 @@ unset($__errorArgs, $__bag); ?>
                         </div>
 
                         <div class="col-md-4">
-                            <label for="ticket_category_id" class="form-label">Ticket Type</label>
-                            <select id="ticket_category_id" name="ticket_category_id" class="form-select <?php $__errorArgs = ['ticket_category_id'];
+                            <label for="<?php echo e($formId); ?>-ticket_category_id" class="form-label">Ticket Type</label>
+                            <select id="<?php echo e($formId); ?>-ticket_category_id" name="ticket_category_id" class="form-select <?php $__errorArgs = ['ticket_category_id'];
 $__bag = $errors->getBag($__errorArgs[1] ?? 'default');
 if ($__bag->has($__errorArgs[0])) :
 if (isset($message)) { $__messageOriginal = $message; }
@@ -164,8 +172,8 @@ unset($__errorArgs, $__bag); ?>
                         </div>
 
                         <div class="col-md-6 d-none" data-subcategory-wrapper>
-                            <label for="ticket_subcategory_id" class="form-label">Ticket Category</label>
-                            <select id="ticket_subcategory_id" name="ticket_subcategory_id" class="form-select <?php $__errorArgs = ['ticket_subcategory_id'];
+                            <label for="<?php echo e($formId); ?>-ticket_subcategory_id" class="form-label">Ticket Category</label>
+                            <select id="<?php echo e($formId); ?>-ticket_subcategory_id" name="ticket_subcategory_id" class="form-select <?php $__errorArgs = ['ticket_subcategory_id'];
 $__bag = $errors->getBag($__errorArgs[1] ?? 'default');
 if ($__bag->has($__errorArgs[0])) :
 if (isset($message)) { $__messageOriginal = $message; }
@@ -195,8 +203,8 @@ unset($__errorArgs, $__bag); ?>
                         </div>
 
                         <div class="col-md-6 d-none" data-detail-subcategory-wrapper>
-                            <label for="ticket_detail_subcategory_id" class="form-label">Ticket Sub Category</label>
-                            <select id="ticket_detail_subcategory_id" name="ticket_detail_subcategory_id" class="form-select <?php $__errorArgs = ['ticket_detail_subcategory_id'];
+                            <label for="<?php echo e($formId); ?>-ticket_detail_subcategory_id" class="form-label">Ticket Sub Category</label>
+                            <select id="<?php echo e($formId); ?>-ticket_detail_subcategory_id" name="ticket_detail_subcategory_id" class="form-select <?php $__errorArgs = ['ticket_detail_subcategory_id'];
 $__bag = $errors->getBag($__errorArgs[1] ?? 'default');
 if ($__bag->has($__errorArgs[0])) :
 if (isset($message)) { $__messageOriginal = $message; }
@@ -226,9 +234,9 @@ unset($__errorArgs, $__bag); ?>
                         </div>
 
                         <div class="col-12">
-                            <label for="description" class="form-label">Issue Description</label>
+                            <label for="<?php echo e($formId); ?>-description" class="form-label">Issue Description</label>
                             <textarea
-                                id="description"
+                                id="<?php echo e($formId); ?>-description"
                                 name="description"
                                 rows="5"
                                 class="form-control <?php $__errorArgs = ['description'];
@@ -256,10 +264,10 @@ unset($__errorArgs, $__bag); ?>
                         </div>
 
                         <div class="col-12">
-                            <label for="attachments" class="form-label">Lampiran Foto</label>
+                            <label for="<?php echo e($formId); ?>-attachments" class="form-label">Lampiran Foto</label>
                             <input
                                 type="file"
-                                id="attachments"
+                                id="<?php echo e($formId); ?>-attachments"
                                 name="attachments[]"
                                 class="form-control <?php $__errorArgs = ['attachments'];
 $__bag = $errors->getBag($__errorArgs[1] ?? 'default');
@@ -317,20 +325,20 @@ unset($__errorArgs, $__bag); ?>
                     </div>
 
                     <div class="d-flex flex-wrap gap-2 mb-3">
-                        <input type="radio" class="btn-check" name="context_mode" id="context_mode_none" value="none" <?php if($selectedContextMode === 'none'): echo 'checked'; endif; ?>>
-                        <label class="btn btn-outline-secondary" for="context_mode_none">No Specific Context</label>
+                        <input type="radio" class="btn-check" name="context_mode" id="<?php echo e($formId); ?>-context_mode_none" value="none" <?php if($selectedContextMode === 'none'): echo 'checked'; endif; ?>>
+                        <label class="btn btn-outline-secondary" for="<?php echo e($formId); ?>-context_mode_none">No Specific Context</label>
 
-                        <input type="radio" class="btn-check" name="context_mode" id="context_mode_service" value="service" <?php if($selectedContextMode === 'service'): echo 'checked'; endif; ?>>
-                        <label class="btn btn-outline-primary" for="context_mode_service">Related Service</label>
+                        <input type="radio" class="btn-check" name="context_mode" id="<?php echo e($formId); ?>-context_mode_service" value="service" <?php if($selectedContextMode === 'service'): echo 'checked'; endif; ?>>
+                        <label class="btn btn-outline-primary" for="<?php echo e($formId); ?>-context_mode_service">Related Service</label>
 
-                        <input type="radio" class="btn-check" name="context_mode" id="context_mode_asset" value="asset" <?php if($selectedContextMode === 'asset'): echo 'checked'; endif; ?>>
-                        <label class="btn btn-outline-primary" for="context_mode_asset">Related Asset</label>
+                        <input type="radio" class="btn-check" name="context_mode" id="<?php echo e($formId); ?>-context_mode_asset" value="asset" <?php if($selectedContextMode === 'asset'): echo 'checked'; endif; ?>>
+                        <label class="btn btn-outline-primary" for="<?php echo e($formId); ?>-context_mode_asset">Related Asset</label>
 
-                        <input type="radio" class="btn-check" name="context_mode" id="context_mode_location" value="location" <?php if($selectedContextMode === 'location'): echo 'checked'; endif; ?>>
-                        <label class="btn btn-outline-primary" for="context_mode_location">Asset Location</label>
+                        <input type="radio" class="btn-check" name="context_mode" id="<?php echo e($formId); ?>-context_mode_location" value="location" <?php if($selectedContextMode === 'location'): echo 'checked'; endif; ?>>
+                        <label class="btn btn-outline-primary" for="<?php echo e($formId); ?>-context_mode_location">Asset Location</label>
                     </div>
 
-                    <input type="hidden" id="asset_location_id" name="asset_location_id" value="<?php echo e(old('asset_location_id', $ticket->asset_location_id)); ?>">
+                    <input type="hidden" id="<?php echo e($formId); ?>-asset_location_id" name="asset_location_id" value="<?php echo e(old('asset_location_id', $ticket->asset_location_id)); ?>">
 
                     <div class="alert alert-light border mb-0" data-context-panel="none">
                         Ticket akan dibuat tanpa service, asset, atau lokasi spesifik. Cocok untuk permintaan umum atau kendala yang objek terdampaknya belum jelas.
@@ -338,8 +346,8 @@ unset($__errorArgs, $__bag); ?>
 
                     <div class="row g-3 d-none" data-context-panel="service">
                         <div class="col-lg-8">
-                            <label for="service_id" class="form-label">Related Service</label>
-                            <select id="service_id" name="service_id" class="form-select <?php $__errorArgs = ['service_id'];
+                            <label for="<?php echo e($formId); ?>-service_id" class="form-label">Related Service</label>
+                            <select id="<?php echo e($formId); ?>-service_id" name="service_id" class="form-select <?php $__errorArgs = ['service_id'];
 $__bag = $errors->getBag($__errorArgs[1] ?? 'default');
 if ($__bag->has($__errorArgs[0])) :
 if (isset($message)) { $__messageOriginal = $message; }
@@ -371,8 +379,8 @@ unset($__errorArgs, $__bag); ?>
 
                     <div class="row g-3 d-none" data-context-panel="asset">
                         <div class="col-lg-6">
-                            <label for="asset_id" class="form-label">Related Asset</label>
-                            <select id="asset_id" name="asset_id" class="form-select <?php $__errorArgs = ['asset_id'];
+                            <label for="<?php echo e($formId); ?>-asset_id" class="form-label">Related Asset</label>
+                            <select id="<?php echo e($formId); ?>-asset_id" name="asset_id" class="form-select <?php $__errorArgs = ['asset_id'];
 $__bag = $errors->getBag($__errorArgs[1] ?? 'default');
 if ($__bag->has($__errorArgs[0])) :
 if (isset($message)) { $__messageOriginal = $message; }
@@ -406,8 +414,8 @@ endif;
 unset($__errorArgs, $__bag); ?>
                         </div>
                         <div class="col-lg-6">
-                            <label for="asset_location_id_asset_mode" class="form-label">Asset Location</label>
-                            <select id="asset_location_id_asset_mode" class="form-select <?php $__errorArgs = ['asset_location_id'];
+                            <label for="<?php echo e($formId); ?>-asset_location_id_asset_mode" class="form-label">Asset Location</label>
+                            <select id="<?php echo e($formId); ?>-asset_location_id_asset_mode" class="form-select <?php $__errorArgs = ['asset_location_id'];
 $__bag = $errors->getBag($__errorArgs[1] ?? 'default');
 if ($__bag->has($__errorArgs[0])) :
 if (isset($message)) { $__messageOriginal = $message; }
@@ -439,8 +447,8 @@ unset($__errorArgs, $__bag); ?>
 
                     <div class="row g-3 d-none" data-context-panel="location">
                         <div class="col-lg-8">
-                            <label for="asset_location_id_location_mode" class="form-label">Asset Location</label>
-                            <select id="asset_location_id_location_mode" class="form-select <?php $__errorArgs = ['asset_location_id'];
+                            <label for="<?php echo e($formId); ?>-asset_location_id_location_mode" class="form-label">Asset Location</label>
+                            <select id="<?php echo e($formId); ?>-asset_location_id_location_mode" class="form-select <?php $__errorArgs = ['asset_location_id'];
 $__bag = $errors->getBag($__errorArgs[1] ?? 'default');
 if ($__bag->has($__errorArgs[0])) :
 if (isset($message)) { $__messageOriginal = $message; }
@@ -470,7 +478,7 @@ unset($__errorArgs, $__bag); ?>
                         </div>
                     </div>
 
-                    <div id="ticket-context-smart-hint" class="alert alert-info border d-none mt-3 mb-0"></div>
+                    <div id="<?php echo e($formId); ?>-ticket-context-smart-hint" class="alert alert-info border d-none mt-3 mb-0"></div>
                 </div>
             </div>
 
@@ -513,8 +521,8 @@ unset($__errorArgs, $__bag); ?>
 
                         <div class="row g-3">
                             <div class="col-md-6">
-                                <label for="requester_id" class="form-label">Requester Override</label>
-                                <select id="requester_id" name="requester_id" class="form-select <?php $__errorArgs = ['requester_id'];
+                                <label for="<?php echo e($formId); ?>-requester_id" class="form-label">Requester Override</label>
+                                <select id="<?php echo e($formId); ?>-requester_id" name="requester_id" class="form-select <?php $__errorArgs = ['requester_id'];
 $__bag = $errors->getBag($__errorArgs[1] ?? 'default');
 if ($__bag->has($__errorArgs[0])) :
 if (isset($message)) { $__messageOriginal = $message; }
@@ -543,8 +551,8 @@ unset($__errorArgs, $__bag); ?>
                             </div>
 
                             <div class="col-md-6">
-                                <label for="requester_department_id" class="form-label">Requester Department Override</label>
-                                <select id="requester_department_id" name="requester_department_id" class="form-select <?php $__errorArgs = ['requester_department_id'];
+                                <label for="<?php echo e($formId); ?>-requester_department_id" class="form-label">Requester Department Override</label>
+                                <select id="<?php echo e($formId); ?>-requester_department_id" name="requester_department_id" class="form-select <?php $__errorArgs = ['requester_department_id'];
 $__bag = $errors->getBag($__errorArgs[1] ?? 'default');
 if ($__bag->has($__errorArgs[0])) :
 if (isset($message)) { $__messageOriginal = $message; }
@@ -573,8 +581,8 @@ unset($__errorArgs, $__bag); ?>
                             </div>
 
                             <div class="col-md-3">
-                                <label for="ticket_priority_id" class="form-label">Priority</label>
-                                <select id="ticket_priority_id" name="ticket_priority_id" class="form-select <?php $__errorArgs = ['ticket_priority_id'];
+                                <label for="<?php echo e($formId); ?>-ticket_priority_id" class="form-label">Priority</label>
+                                <select id="<?php echo e($formId); ?>-ticket_priority_id" name="ticket_priority_id" class="form-select <?php $__errorArgs = ['ticket_priority_id'];
 $__bag = $errors->getBag($__errorArgs[1] ?? 'default');
 if ($__bag->has($__errorArgs[0])) :
 if (isset($message)) { $__messageOriginal = $message; }
@@ -603,8 +611,8 @@ unset($__errorArgs, $__bag); ?>
                             </div>
 
                             <div class="col-md-3">
-                                <label for="source" class="form-label">Source</label>
-                                <select id="source" name="source" class="form-select <?php $__errorArgs = ['source'];
+                                <label for="<?php echo e($formId); ?>-source" class="form-label">Source</label>
+                                <select id="<?php echo e($formId); ?>-source" name="source" class="form-select <?php $__errorArgs = ['source'];
 $__bag = $errors->getBag($__errorArgs[1] ?? 'default');
 if ($__bag->has($__errorArgs[0])) :
 if (isset($message)) { $__messageOriginal = $message; }
@@ -630,8 +638,8 @@ unset($__errorArgs, $__bag); ?>
                             </div>
 
                             <div class="col-md-3">
-                                <label for="impact" class="form-label">Impact</label>
-                                <select id="impact" name="impact" class="form-select <?php $__errorArgs = ['impact'];
+                                <label for="<?php echo e($formId); ?>-impact" class="form-label">Impact</label>
+                                <select id="<?php echo e($formId); ?>-impact" name="impact" class="form-select <?php $__errorArgs = ['impact'];
 $__bag = $errors->getBag($__errorArgs[1] ?? 'default');
 if ($__bag->has($__errorArgs[0])) :
 if (isset($message)) { $__messageOriginal = $message; }
@@ -656,8 +664,8 @@ unset($__errorArgs, $__bag); ?>
                             </div>
 
                             <div class="col-md-3">
-                                <label for="urgency" class="form-label">Urgency</label>
-                                <select id="urgency" name="urgency" class="form-select <?php $__errorArgs = ['urgency'];
+                                <label for="<?php echo e($formId); ?>-urgency" class="form-label">Urgency</label>
+                                <select id="<?php echo e($formId); ?>-urgency" name="urgency" class="form-select <?php $__errorArgs = ['urgency'];
 $__bag = $errors->getBag($__errorArgs[1] ?? 'default');
 if ($__bag->has($__errorArgs[0])) :
 if (isset($message)) { $__messageOriginal = $message; }
@@ -711,9 +719,9 @@ unset($__errorArgs, $__bag); ?>
 
                         <div class="row g-3">
                             <div class="col-12">
-                                <label for="assigned_engineer_ids" class="form-label">Engineer</label>
+                                <label for="<?php echo e($formId); ?>-assigned_engineer_ids" class="form-label">Engineer</label>
                                 <select
-                                    id="assigned_engineer_ids"
+                                    id="<?php echo e($formId); ?>-assigned_engineer_ids"
                                     name="assigned_engineer_ids[]"
                                     class="form-select <?php $__errorArgs = ['assigned_engineer_ids'];
 $__bag = $errors->getBag($__errorArgs[1] ?? 'default');
@@ -735,8 +743,8 @@ unset($__errorArgs, $__bag); ?>"
                                     data-search-placeholder="Search engineer"
                                     multiple
                                 >
-                                    <?php $__currentLoopData = $groupedEngineerOptions; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $picTeamLabel => $groupedOptions): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
-                                        <optgroup label="<?php echo e($picTeamLabel); ?>">
+                                    <?php $__currentLoopData = $groupedEngineerOptions; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $teamLabel => $groupedOptions): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+                                        <optgroup label="<?php echo e($teamLabel); ?>">
                                             <?php $__currentLoopData = $groupedOptions; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $option): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
                                                 <option value="<?php echo e($option->id); ?>" <?php if(in_array((string) $option->id, $selectedAssignedEngineerIds, true)): echo 'selected'; endif; ?>>
                                                     <?php echo e($option->name); ?>
@@ -774,10 +782,10 @@ unset($__errorArgs, $__bag); ?>
                             </div>
 
                             <div class="col-md-6">
-                                <label for="assigned_team_name" class="form-label">Team</label>
+                                <label for="<?php echo e($formId); ?>-assigned_team_name" class="form-label">Team</label>
                                 <input
                                     type="text"
-                                    id="assigned_team_name"
+                                    id="<?php echo e($formId); ?>-assigned_team_name"
                                     name="assigned_team_name"
                                     class="form-control <?php $__errorArgs = ['assigned_team_name'];
 $__bag = $errors->getBag($__errorArgs[1] ?? 'default');
@@ -789,9 +797,9 @@ endif;
 unset($__errorArgs, $__bag); ?>"
                                     value="<?php echo e(old('assigned_team_name')); ?>"
                                     placeholder="Ops / Field Team"
-                                    list="ticket-create-engineer-team-options"
+                                    list="<?php echo e($formId); ?>-engineer-team-options"
                                 >
-                                <datalist id="ticket-create-engineer-team-options">
+                                <datalist id="<?php echo e($formId); ?>-engineer-team-options">
                                     <?php $__currentLoopData = $engineerTeamNameOptions; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $teamName): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
                                         <option value="<?php echo e($teamName); ?>"></option>
                                     <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?>
@@ -809,10 +817,10 @@ unset($__errorArgs, $__bag); ?>
                             </div>
 
                             <div class="col-md-6">
-                                <label for="assignment_notes" class="form-label">Assignment Notes</label>
+                                <label for="<?php echo e($formId); ?>-assignment_notes" class="form-label">Assignment Notes</label>
                                 <input
                                     type="text"
-                                    id="assignment_notes"
+                                    id="<?php echo e($formId); ?>-assignment_notes"
                                     name="assignment_notes"
                                     class="form-control <?php $__errorArgs = ['assignment_notes'];
 $__bag = $errors->getBag($__errorArgs[1] ?? 'default');
@@ -852,374 +860,14 @@ unset($__errorArgs, $__bag); ?>
                         <button type="button" class="btn btn-primary" data-step-action="next">Continue</button>
                         <button type="submit" class="btn btn-success d-none" data-step-action="submit">Create Ticket</button>
                     </div>
-                    <a href="<?php echo e(route('tickets.index')); ?>" class="btn btn-outline-light">Cancel</a>
+                    <?php if($isModal): ?>
+                        <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Close</button>
+                    <?php else: ?>
+                        <a href="<?php echo e(route('tickets.index')); ?>" class="btn btn-outline-light">Cancel</a>
+                    <?php endif; ?>
                 </div>
             </div>
         </form>
     </div>
 </div>
-<?php $__env->stopSection(); ?>
-
-<?php $__env->startPush('scripts'); ?>
-<script>
-    document.addEventListener('DOMContentLoaded', function() {
-        const form = document.getElementById('ticket-create-form');
-        if (!form) {
-            return;
-        }
-
-        const categorySelect = document.getElementById('ticket_category_id');
-        const subcategorySelect = document.getElementById('ticket_subcategory_id');
-        const subcategoryWrapper = form.querySelector('[data-subcategory-wrapper]');
-        const detailSubcategorySelect = document.getElementById('ticket_detail_subcategory_id');
-        const detailSubcategoryWrapper = form.querySelector('[data-detail-subcategory-wrapper]');
-        const contextInputs = document.querySelectorAll('input[name="context_mode"]');
-        const contextPanels = document.querySelectorAll('[data-context-panel]');
-        const serviceSelect = document.getElementById('service_id');
-        const assetSelect = document.getElementById('asset_id');
-        const sharedLocationInput = document.getElementById('asset_location_id');
-        const locationAssetModeSelect = document.getElementById('asset_location_id_asset_mode');
-        const locationModeSelect = document.getElementById('asset_location_id_location_mode');
-        const smartHint = document.getElementById('ticket-context-smart-hint');
-        const stepPanels = Array.from(form.querySelectorAll('[data-step-panel]'));
-        const stepTriggers = Array.from(form.querySelectorAll('[data-step-trigger]'));
-        const prevButton = form.querySelector('[data-step-action="prev"]');
-        const nextButton = form.querySelector('[data-step-action="next"]');
-        const submitButton = form.querySelector('[data-step-action="submit"]');
-        const maxStep = stepPanels.length;
-        let currentStep = Number(form.dataset.initialStep || 1);
-
-        const toggleSubcategory = () => {
-            if (!categorySelect || !subcategorySelect) {
-                return;
-            }
-
-            const selectedCategoryId = categorySelect.value;
-            let hasVisibleSubcategory = false;
-
-            Array.from(subcategorySelect.options).forEach((option, index) => {
-                if (index === 0) {
-                    option.hidden = false;
-                    return;
-                }
-
-                const categoryId = option.getAttribute('data-category-id');
-                const visible = selectedCategoryId === '' || categoryId === selectedCategoryId;
-                option.hidden = !visible;
-                hasVisibleSubcategory = hasVisibleSubcategory || (selectedCategoryId !== '' && visible);
-
-                if (!visible && option.selected) {
-                    option.selected = false;
-                }
-            });
-
-            if (subcategoryWrapper) {
-                subcategoryWrapper.classList.toggle('d-none', selectedCategoryId === '' || !hasVisibleSubcategory);
-            }
-
-            if (selectedCategoryId === '') {
-                subcategorySelect.value = '';
-                if (subcategorySelect._choices) {
-                    subcategorySelect._choices.removeActiveItems();
-                }
-            }
-
-            if (!detailSubcategorySelect) {
-                return;
-            }
-
-            const selectedSubcategoryId = subcategorySelect.value;
-            let hasVisibleDetailSubcategory = false;
-
-            Array.from(detailSubcategorySelect.options).forEach((option, index) => {
-                if (index === 0) {
-                    option.hidden = false;
-                    return;
-                }
-
-                const parentSubcategoryId = option.getAttribute('data-subcategory-id');
-                const visible = selectedSubcategoryId !== '' && parentSubcategoryId === selectedSubcategoryId;
-                option.hidden = !visible;
-                hasVisibleDetailSubcategory = hasVisibleDetailSubcategory || visible;
-
-                if (!visible && option.selected) {
-                    option.selected = false;
-                }
-            });
-
-            if (detailSubcategoryWrapper) {
-                detailSubcategoryWrapper.classList.toggle('d-none', selectedSubcategoryId === '' || !hasVisibleDetailSubcategory);
-            }
-
-            if (selectedSubcategoryId === '') {
-                detailSubcategorySelect.value = '';
-                if (detailSubcategorySelect._choices) {
-                    detailSubcategorySelect._choices.removeActiveItems();
-                }
-            }
-        };
-
-        const syncChoicesSelect = (select, value) => {
-            if (!select) {
-                return;
-            }
-
-            select.value = value || '';
-
-            if (select._choices) {
-                select._choices.removeActiveItems();
-                if (value) {
-                    select._choices.setChoiceByValue(String(value));
-                }
-            }
-        };
-
-        const clearInactiveContext = (mode) => {
-            if (mode !== 'service') {
-                syncChoicesSelect(serviceSelect, '');
-            }
-
-            if (mode !== 'asset') {
-                syncChoicesSelect(assetSelect, '');
-            }
-
-            if (mode === 'none' || mode === 'service') {
-                if (sharedLocationInput) {
-                    sharedLocationInput.value = '';
-                }
-                syncChoicesSelect(locationAssetModeSelect, '');
-                syncChoicesSelect(locationModeSelect, '');
-            }
-
-            if (mode === 'asset') {
-                syncChoicesSelect(locationModeSelect, '');
-            }
-
-            if (mode === 'location') {
-                syncChoicesSelect(locationAssetModeSelect, '');
-            }
-        };
-
-        const syncLocationMirror = () => {
-            if (!sharedLocationInput) {
-                return;
-            }
-
-            const activeMode = document.querySelector('input[name="context_mode"]:checked')?.value || 'none';
-
-            if (activeMode === 'asset' && locationAssetModeSelect) {
-                sharedLocationInput.value = locationAssetModeSelect.value;
-                return;
-            }
-
-            if (activeMode === 'location' && locationModeSelect) {
-                sharedLocationInput.value = locationModeSelect.value;
-                return;
-            }
-
-            sharedLocationInput.value = '';
-        };
-
-        const getOptionByValue = (select, value) => {
-            if (!select || !value) {
-                return null;
-            }
-
-            return Array.from(select.options).find((option) => option.value === String(value)) ?? null;
-        };
-
-        const setSmartHint = (message) => {
-            if (!smartHint) {
-                return;
-            }
-
-            smartHint.innerHTML = message || '';
-            smartHint.classList.toggle('d-none', !message);
-        };
-
-        const updateSmartContextHint = () => {
-            const activeMode = document.querySelector('input[name="context_mode"]:checked')?.value || 'none';
-
-            if (activeMode === 'service' && serviceSelect?.value) {
-                const relatedAssets = Array.from(assetSelect?.options ?? [])
-                    .filter((option) => option.value !== '' && option.dataset.serviceId === serviceSelect.value)
-                    .map((option) => option.textContent.trim());
-
-                if (relatedAssets.length > 0) {
-                    setSmartHint(`Service ini terhubung ke ${relatedAssets.length} asset. Contoh terkait: <strong>${relatedAssets.slice(0, 3).join(', ')}</strong>.`);
-                } else {
-                    setSmartHint('Belum ada asset aktif yang terhubung langsung ke service ini.');
-                }
-
-                return;
-            }
-
-            if (activeMode === 'asset' && assetSelect?.value) {
-                const selectedAssetOption = getOptionByValue(assetSelect, assetSelect.value);
-                const relatedServiceId = selectedAssetOption?.dataset.serviceId || '';
-                const relatedLocationId = selectedAssetOption?.dataset.locationId || '';
-                const relatedServiceName = getOptionByValue(serviceSelect, relatedServiceId)?.textContent?.trim();
-                const relatedLocationName = getOptionByValue(locationAssetModeSelect ?? locationModeSelect, relatedLocationId)?.textContent?.trim();
-
-                if (relatedServiceId) {
-                    syncChoicesSelect(serviceSelect, relatedServiceId);
-                }
-
-                if (relatedLocationId && locationAssetModeSelect && !locationAssetModeSelect.value) {
-                    syncChoicesSelect(locationAssetModeSelect, relatedLocationId);
-                }
-
-                syncLocationMirror();
-
-                const details = [
-                    relatedServiceName ? `service <strong>${relatedServiceName}</strong>` : null,
-                    relatedLocationName ? `location <strong>${relatedLocationName}</strong>` : null,
-                ].filter(Boolean);
-
-                setSmartHint(details.length > 0
-                    ? `Asset ini terhubung ke ${details.join(' dan ')}. Field terkait sudah dibantu isi otomatis jika datanya tersedia.`
-                    : 'Asset ini belum punya relasi service atau location yang lengkap di master data.');
-
-                return;
-            }
-
-            if (activeMode === 'location' && locationModeSelect?.value) {
-                const relatedAssets = Array.from(assetSelect?.options ?? [])
-                    .filter((option) => option.value !== '' && option.dataset.locationId === locationModeSelect.value)
-                    .map((option) => option.textContent.trim());
-
-                if (relatedAssets.length > 0) {
-                    setSmartHint(`Di location ini ada ${relatedAssets.length} asset terkait. Contoh: <strong>${relatedAssets.slice(0, 3).join(', ')}</strong>.`);
-                } else {
-                    setSmartHint('Belum ada asset aktif yang dipetakan ke location ini.');
-                }
-
-                return;
-            }
-
-            setSmartHint('');
-        };
-
-        const syncContextPanels = () => {
-            const activeMode = document.querySelector('input[name="context_mode"]:checked')?.value || 'none';
-
-            contextPanels.forEach((panel) => {
-                panel.classList.toggle('d-none', panel.dataset.contextPanel !== activeMode);
-            });
-
-            if (serviceSelect) {
-                serviceSelect.required = activeMode === 'service';
-            }
-
-            if (assetSelect) {
-                assetSelect.required = activeMode === 'asset';
-            }
-
-            if (locationModeSelect) {
-                locationModeSelect.required = activeMode === 'location';
-            }
-
-            clearInactiveContext(activeMode);
-            syncLocationMirror();
-            updateSmartContextHint();
-        };
-
-        const fieldsForStep = (step) => {
-            if (step === 1) {
-                return [
-                    document.getElementById('title'),
-                    document.getElementById('ticket_category_id'),
-                    document.getElementById('description'),
-                ].filter(Boolean);
-            }
-
-            if (step === 2) {
-                const activeMode = document.querySelector('input[name="context_mode"]:checked')?.value || 'none';
-                const fields = [];
-
-                if (activeMode === 'service' && serviceSelect) {
-                    fields.push(serviceSelect);
-                }
-                if (activeMode === 'asset' && assetSelect) {
-                    fields.push(assetSelect);
-                }
-                if (activeMode === 'location' && locationModeSelect) {
-                    fields.push(locationModeSelect);
-                }
-
-                return fields;
-            }
-
-            return [];
-        };
-
-        const validateStep = (step) => {
-            const fields = fieldsForStep(step);
-            for (const field of fields) {
-                if (!field.checkValidity()) {
-                    field.reportValidity();
-                    return false;
-                }
-            }
-
-            return true;
-        };
-
-        const showStep = (step) => {
-            currentStep = Math.min(Math.max(step, 1), maxStep);
-
-            stepPanels.forEach((panel) => {
-                panel.classList.toggle('d-none', Number(panel.dataset.stepPanel) !== currentStep);
-            });
-
-            stepTriggers.forEach((trigger) => {
-                const stepNumber = Number(trigger.dataset.stepTrigger);
-                const isActive = stepNumber === currentStep;
-                trigger.classList.toggle('btn-primary', isActive);
-                trigger.classList.toggle('text-white', isActive);
-                trigger.classList.toggle('btn-outline-primary', !isActive);
-            });
-
-            prevButton?.classList.toggle('d-none', currentStep === 1);
-            nextButton?.classList.toggle('d-none', currentStep === maxStep);
-            submitButton?.classList.toggle('d-none', currentStep !== maxStep);
-        };
-
-        categorySelect?.addEventListener('change', toggleSubcategory);
-        subcategorySelect?.addEventListener('change', toggleSubcategory);
-        contextInputs.forEach((input) => input.addEventListener('change', syncContextPanels));
-        serviceSelect?.addEventListener('change', updateSmartContextHint);
-        assetSelect?.addEventListener('change', updateSmartContextHint);
-        locationAssetModeSelect?.addEventListener('change', syncLocationMirror);
-        locationAssetModeSelect?.addEventListener('change', updateSmartContextHint);
-        locationModeSelect?.addEventListener('change', syncLocationMirror);
-        locationModeSelect?.addEventListener('change', updateSmartContextHint);
-
-        stepTriggers.forEach((trigger) => {
-            trigger.addEventListener('click', () => {
-                const targetStep = Number(trigger.dataset.stepTrigger);
-                if (targetStep > currentStep && !validateStep(currentStep)) {
-                    return;
-                }
-                showStep(targetStep);
-            });
-        });
-
-        nextButton?.addEventListener('click', () => {
-            if (!validateStep(currentStep)) {
-                return;
-            }
-            showStep(currentStep + 1);
-        });
-
-        prevButton?.addEventListener('click', () => showStep(currentStep - 1));
-
-        toggleSubcategory();
-        syncContextPanels();
-        updateSmartContextHint();
-        showStep(currentStep);
-    });
-</script>
-<?php $__env->stopPush(); ?>
-
-<?php echo $__env->make('layouts.vertical', ['subtitle' => 'Create Ticket'], \Illuminate\Support\Arr::except(get_defined_vars(), ['__data', '__path']))->render(); ?><?php /**PATH /Users/muhamadsobirin/Documents/cxts/resources/views/modules/tickets/tickets/form.blade.php ENDPATH**/ ?>
+<?php /**PATH /Users/muhamadsobirin/Documents/cxts/resources/views/modules/tickets/tickets/partials/create-form-fields.blade.php ENDPATH**/ ?>

@@ -140,7 +140,7 @@
                                 <li class="sub-nav-item"><a class="sub-nav-link" href="<?php echo e(route('tickets.index', ['assignment_queue' => 'ready'])); ?>">Ready for Assignment</a></li>
                             <?php endif; ?>
                             <?php if($canCreateTicketOps): ?>
-                                <li class="sub-nav-item"><a class="sub-nav-link" href="<?php echo e(route('tickets.create')); ?>">Create Ticket</a></li>
+                                <li class="sub-nav-item"><a class="sub-nav-link" href="<?php echo e(route('tickets.index', ['open_create_modal' => 1])); ?>">Create Ticket</a></li>
                             <?php endif; ?>
                         </ul>
                     </div>

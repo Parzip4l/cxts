@@ -13,11 +13,11 @@
                     value="<?php echo e($filters['search'] ?? ''); ?>">
             </div>
             <div class="col-md-3">
-                <select name="ticket_subcategory_id" class="form-select">
+                <select name="ticket_subcategory_id" class="form-select" data-searchable-select data-search-placeholder="Search category code or name">
                     <option value="">All ticket categories</option>
                     <?php $__currentLoopData = $categoryOptions; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $option): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
                         <option value="<?php echo e($option->id); ?>" <?php if((string) ($filters['ticket_subcategory_id'] ?? '') === (string) $option->id): echo 'selected'; endif; ?>>
-                            <?php echo e($option->category?->name ? $option->category->name.' / ' : ''); ?><?php echo e($option->name); ?>
+                            <?php echo e($option->category?->code ? $option->category->code.' - ' : ''); ?><?php echo e($option->category?->name ? $option->category->name.' / ' : ''); ?><?php echo e($option->code); ?> - <?php echo e($option->name); ?>
 
                         </option>
                     <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?>

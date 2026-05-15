@@ -24,7 +24,7 @@
             <div class="card">
                 <div class="card-body">
                     <p class="text-muted mb-1">Assigned Tickets</p>
-                    <h3 class="mb-0"><?php echo e(number_format($summary['total_assigned_tickets'])); ?></h3>
+                    <h3 class="mb-0"><?php echo e(number_format($summary['total_assigned_tickets'], 2)); ?></h3>
                 </div>
             </div>
         </div>
@@ -73,7 +73,8 @@
         <div class="col-xl-6">
             <div class="card">
                 <div class="card-header">
-                    <h4 class="card-title mb-0">SLA Compliance Radar</h4>
+                    <h4 class="card-title mb-1">SLA Compliance by Engineer</h4>
+                    <p class="text-muted small mb-0">Bandingkan Response SLA dan Resolution SLA per engineer dalam format bar horizontal.</p>
                 </div>
                 <div class="card-body">
                     <div id="eng-sla-compliance-chart" class="apex-charts"></div>
@@ -119,8 +120,8 @@
                                 <div><?php echo e($engineer['engineer_name']); ?></div>
                                 <small class="text-muted"><?php echo e($engineer['department_name'] ?? '-'); ?></small>
                             </td>
-                            <td><?php echo e(number_format($engineer['assigned_tickets'])); ?></td>
-                            <td><?php echo e(number_format($engineer['completed_tickets'])); ?></td>
+                            <td><?php echo e(number_format($engineer['assigned_tickets'], 2)); ?></td>
+                            <td><?php echo e(number_format($engineer['completed_tickets'], 2)); ?></td>
                             <td><?php echo e(number_format($engineer['completion_rate'], 2)); ?>%</td>
                             <td><?php echo e(number_format($engineer['response_compliance_rate'], 2)); ?>%</td>
                             <td><?php echo e(number_format($engineer['resolution_compliance_rate'], 2)); ?>%</td>

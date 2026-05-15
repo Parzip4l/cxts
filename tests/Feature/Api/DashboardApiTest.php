@@ -58,6 +58,15 @@ class DashboardApiTest extends TestCase
             'is_active' => true,
         ]);
 
+        $statusCancelled = TicketStatus::query()->updateOrCreate(
+            ['code' => 'CANCELLED'],
+            [
+                'name' => 'Cancelled',
+                'is_closed' => true,
+                'is_active' => true,
+            ]
+        );
+
         $ticketOnTime = Ticket::query()->create([
             'ticket_number' => 'TCK-DASH-0001',
             'title' => 'Issue A',
@@ -103,6 +112,19 @@ class DashboardApiTest extends TestCase
             'urgency' => 'low',
         ]);
 
+        Ticket::query()->create([
+            'ticket_number' => 'TCK-DASH-0004',
+            'title' => 'Issue D',
+            'description' => 'Issue D description',
+            'ticket_status_id' => $statusCancelled->id,
+            'assigned_engineer_id' => $engineerTwo->id,
+            'response_due_at' => now()->addMinutes(15),
+            'resolution_due_at' => now()->addHour(),
+            'source' => 'web',
+            'impact' => 'medium',
+            'urgency' => 'medium',
+        ]);
+
         TicketWorklog::query()->create([
             'ticket_id' => $ticketOnTime->id,
             'user_id' => $engineerOne->id,
@@ -129,7 +151,7 @@ class DashboardApiTest extends TestCase
         $this->withHeader('Authorization', 'Bearer '.$token)
             ->getJson('/api/v1/dashboard/overview'.$query)
             ->assertOk()
-            ->assertJsonPath('summary.total_tickets', 3)
+            ->assertJsonPath('summary.total_tickets', 4)
             ->assertJsonPath('sla.response.breached', 2)
             ->assertJsonPath('sla.resolution.breached', 1);
 
@@ -138,7 +160,8 @@ class DashboardApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('summary.engineer_count', 2)
             ->assertJsonPath('engineers.0.engineer_name', $engineerOne->name)
-            ->assertJsonPath('engineers.0.assigned_tickets', 2);
+            ->assertJsonPath('engineers.0.assigned_tickets', 2)
+            ->assertJsonPath('summary.total_assigned_tickets', 3);
 
         CarbonImmutable::setTestNow();
     }

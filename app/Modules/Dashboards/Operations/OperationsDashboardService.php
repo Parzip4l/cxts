@@ -980,6 +980,10 @@ class OperationsDashboardService
             ])
             ->whereBetween('tickets.created_at', [$from, $to])
             ->where(function (Builder $builder): void {
+                $builder->whereNull('tickets.ticket_status_id')
+                    ->orWhereDoesntHave('status', fn (Builder $statusQuery) => $statusQuery->where('code', 'CANCELLED'));
+            })
+            ->where(function (Builder $builder): void {
                 $builder->whereNotNull('tickets.assigned_engineer_id')
                     ->orWhereHas('assignedEngineers');
             });
@@ -998,8 +1002,13 @@ class OperationsDashboardService
 
         $worklogQuery = TicketWorklog::query()
             ->join('tickets', 'ticket_worklogs.ticket_id', '=', 'tickets.id')
+            ->leftJoin('ticket_statuses as engineer_effectiveness_statuses', 'tickets.ticket_status_id', '=', 'engineer_effectiveness_statuses.id')
             ->selectRaw('ticket_worklogs.user_id, COALESCE(SUM(ticket_worklogs.duration_minutes), 0) as total_worklog_minutes')
-            ->whereBetween('ticket_worklogs.created_at', [$from, $to]);
+            ->whereBetween('ticket_worklogs.created_at', [$from, $to])
+            ->where(function (Builder $builder): void {
+                $builder->whereNull('engineer_effectiveness_statuses.code')
+                    ->orWhere('engineer_effectiveness_statuses.code', '!=', 'CANCELLED');
+            });
 
         $this->applyTicketFilters($worklogQuery, $filters);
 

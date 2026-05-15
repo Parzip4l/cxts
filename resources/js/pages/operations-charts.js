@@ -325,6 +325,15 @@ function renderSlaPerformanceCharts(payload) {
 function renderEngineerEffectivenessCharts(payload) {
     const data = payload?.engineerEffectiveness ?? {};
     const engineers = data?.engineers ?? [];
+    const slaComparisonEngineers = [...engineers].sort((left, right) => {
+        const leftAverage =
+            (Number(left?.response_compliance_rate ?? 0) + Number(left?.resolution_compliance_rate ?? 0)) / 2;
+        const rightAverage =
+            (Number(right?.response_compliance_rate ?? 0) + Number(right?.resolution_compliance_rate ?? 0)) / 2;
+
+        return rightAverage - leftAverage;
+    });
+    const slaChartHeight = Math.max(340, slaComparisonEngineers.length * 36);
 
     renderChart("#eng-effectiveness-score-chart", {
         chart: { type: "bar", height: 340, toolbar: { show: false } },
@@ -346,13 +355,54 @@ function renderEngineerEffectivenessCharts(payload) {
     });
 
     renderChart("#eng-sla-compliance-chart", {
-        chart: { type: "radar", height: 340, toolbar: { show: false } },
+        chart: { type: "bar", height: slaChartHeight, toolbar: { show: false } },
+        plotOptions: {
+            bar: {
+                horizontal: true,
+                borderRadius: 5,
+                barHeight: "62%",
+            },
+        },
         series: [
-            { name: "Response SLA %", data: engineers.map((item) => Number(item.response_compliance_rate ?? 0)) },
-            { name: "Resolution SLA %", data: engineers.map((item) => Number(item.resolution_compliance_rate ?? 0)) },
+            {
+                name: "Response SLA %",
+                data: slaComparisonEngineers.map((item) => Number(item.response_compliance_rate ?? 0)),
+            },
+            {
+                name: "Resolution SLA %",
+                data: slaComparisonEngineers.map((item) => Number(item.resolution_compliance_rate ?? 0)),
+            },
         ],
-        labels: engineers.map((item) => item.engineer_name ?? "-"),
+        xaxis: {
+            categories: slaComparisonEngineers.map((item) => item.engineer_name ?? "-"),
+            min: 0,
+            max: 100,
+            tickAmount: 5,
+            labels: {
+                formatter: function (value) {
+                    return `${Number(value).toFixed(0)}%`;
+                },
+            },
+        },
+        yaxis: {
+            labels: {
+                maxWidth: 240,
+            },
+        },
         colors: ["#0ea5e9", "#ef4444"],
+        legend: { position: "top" },
+        dataLabels: { enabled: false },
+        tooltip: {
+            y: {
+                formatter: function (value) {
+                    return `${Number(value).toFixed(2)}%`;
+                },
+            },
+        },
+        grid: {
+            borderColor: "#e5e7eb",
+            strokeDashArray: 4,
+        },
     });
 
     renderChart("#eng-time-scatter-chart", {

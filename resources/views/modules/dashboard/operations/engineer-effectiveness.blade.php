@@ -75,7 +75,8 @@
         <div class="col-xl-6">
             <div class="card">
                 <div class="card-header">
-                    <h4 class="card-title mb-0">SLA Compliance Radar</h4>
+                    <h4 class="card-title mb-1">SLA Compliance by Engineer</h4>
+                    <p class="text-muted small mb-0">Bandingkan Response SLA dan Resolution SLA per engineer dalam format bar horizontal.</p>
                 </div>
                 <div class="card-body">
                     <div id="eng-sla-compliance-chart" class="apex-charts"></div>

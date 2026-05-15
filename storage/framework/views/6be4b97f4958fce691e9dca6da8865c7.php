@@ -130,10 +130,11 @@
         && ! in_array($statusCode, ['REJECTED', 'COMPLETED', 'CLOSED', 'CANCELLED'], true)
         && $ticket->completed_at === null
         && $ticket->closed_at === null;
+    $canEditTicket = $currentUser?->can('update', $ticket);
     $engineerCustomProperties = function ($option) {
         return [
             'department_name' => $option->department_name ?? 'No department',
-            'team_label' => $option->team_label ?? 'No team/shift',
+            'team_label' => $option->engineer_team_label ?? $option->department_name ?? 'No Engineer Team',
             'availability_label' => $option->availability_label ?? 'Unknown',
             'availability_status' => $option->availability_status ?? 'unknown',
             'workload_label' => $option->workload_label ?? 'Light',
@@ -197,6 +198,11 @@
                             <div class="small text-muted">Requester</div>
                             <div class="fw-semibold"><?php echo e($ticket->requester?->name ?? '-'); ?></div>
                             <div class="small text-muted"><?php echo e($ticket->requesterDepartment?->name ?? 'No department'); ?></div>
+                            <?php if($canEditTicket): ?>
+                                <div class="mt-3">
+                                    <a href="<?php echo e(route('tickets.edit', $ticket)); ?>" class="btn btn-sm btn-outline-secondary">Edit Ticket</a>
+                                </div>
+                            <?php endif; ?>
                         </div>
                     </div>
 
@@ -826,7 +832,7 @@
 
                 <form method="GET" action="<?php echo e(route('tickets.show', $ticket)); ?>" class="row g-3 mb-3">
                     <div class="col-12">
-                        <div class="small text-muted">Saring shortlist engineer berdasarkan department dan shift operasional sebelum assign.</div>
+                        <div class="small text-muted">Saring shortlist engineer berdasarkan master Engineer Team. Shift hari ini tetap tampil sebagai informasi tambahan.</div>
                     </div>
                     <div class="col-12 col-md-12">
                         <label for="assignment_department_id" class="form-label">Filter Department</label>
@@ -843,13 +849,13 @@
                         </select>
                     </div>
                     <div class="col-12 col-md-12">
-                        <label for="assignment_team_label" class="form-label">Filter Team / Shift</label>
-                        <select id="assignment_team_label" name="assignment_team_label"
+                        <label for="assignment_engineer_team_label" class="form-label">Filter Engineer Team</label>
+                        <select id="assignment_engineer_team_label" name="assignment_engineer_team_label"
                             class="form-select" data-searchable-select data-force-searchable-select="true"
-                            data-search-placeholder="Search team or shift">
-                            <option value="">- All Teams / Shifts -</option>
-                            <?php $__currentLoopData = $assignmentTeamOptions; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $teamOption): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
-                                <option value="<?php echo e($teamOption); ?>" <?php if((string) ($assignmentFilters['team_label'] ?? '') === (string) $teamOption): echo 'selected'; endif; ?>>
+                            data-search-placeholder="Search engineer team">
+                            <option value="">- All Engineer Teams -</option>
+                            <?php $__currentLoopData = $assignmentEngineerTeamOptions; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $teamOption): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+                                <option value="<?php echo e($teamOption); ?>" <?php if((string) ($assignmentFilters['engineer_team_label'] ?? '') === (string) $teamOption): echo 'selected'; endif; ?>>
                                     <?php echo e($teamOption); ?>
 
                                 </option>
@@ -857,7 +863,7 @@
                         </select>
                     </div>
                     <div class="col-12 d-flex flex-wrap justify-content-end gap-2">
-                        <?php if(($assignmentFilters['department_id'] ?? null) || ($assignmentFilters['team_label'] ?? null)): ?>
+                        <?php if(($assignmentFilters['department_id'] ?? null) || ($assignmentFilters['engineer_team_label'] ?? null)): ?>
                             <a href="<?php echo e(route('tickets.show', $ticket)); ?>" class="btn btn-outline-light text-nowrap">Reset Filter</a>
                         <?php endif; ?>
                         <button type="submit" class="btn btn-outline-secondary text-nowrap">Apply Filters</button>
@@ -901,7 +907,7 @@
                                                     <div class="small text-muted">
                                                         <?php echo e($option->department_name ?? 'No department'); ?>
 
-                                                        · <?php echo e($option->team_label ?? 'No team/shift'); ?>
+                                                        · Engineer Team: <?php echo e($option->engineer_team_label ?? $option->department_name ?? 'No Engineer Team'); ?>
 
                                                         · <?php echo e($option->workload_open_tickets ?? 0); ?> open ticket(s)
                                                     </div>
@@ -933,13 +939,13 @@
                         </div>
 
                         <div class="col-12">
-                            <div class="border rounded p-3 bg-light-subtle h-100">
-                                <div class="fw-semibold mb-2">Recommended Engineers</div>
-                                <label for="recommended_engineer_id_ui" class="form-label">Best Match By Score</label>
-                                <select id="recommended_engineer_id_ui"
-                                    data-searchable-select data-force-searchable-select="true"
-                                    data-engineer-picker="true" data-search-placeholder="Search recommended engineer"
-                                    class="form-select <?php $__errorArgs = ['assigned_engineer_ids'];
+                                <div class="border rounded p-3 bg-light-subtle h-100">
+                                    <div class="fw-semibold mb-2">Recommended Engineers</div>
+                                    <label for="recommended_engineer_id_ui" class="form-label">Best Match By Score</label>
+                                    <select id="recommended_engineer_id_ui"
+                                        data-searchable-select data-force-searchable-select="true"
+                                        data-engineer-picker="true" data-search-placeholder="Search recommended engineer"
+                                        class="form-select <?php $__errorArgs = ['assigned_engineer_ids'];
 $__bag = $errors->getBag($__errorArgs[1] ?? 'default');
 if ($__bag->has($__errorArgs[0])) :
 if (isset($message)) { $__messageOriginal = $message; }
@@ -954,21 +960,25 @@ $message = $__bag->first($__errorArgs[0]); ?> is-invalid <?php unset($message);
 if (isset($__messageOriginal)) { $message = $__messageOriginal; }
 endif;
 unset($__errorArgs, $__bag); ?>"
-                                    name="assigned_engineer_ids[]" multiple>
-                                    <?php $__currentLoopData = $engineerOptions; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $option): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
-                                        <option value="<?php echo e($option->id); ?>"
-                                            data-custom-properties='<?php echo json_encode($engineerCustomProperties($option), 15, 512) ?>'
-                                            <?php if(in_array((string) $option->id, $selectedAssignedEngineerIds, true)): echo 'selected'; endif; ?>>
-                                            <?php echo e($option->name); ?>
+                                        name="assigned_engineer_ids[]" multiple>
+                                    <?php $__currentLoopData = $engineerOptions->groupBy(fn ($option) => $option->engineer_team_label ?? $option->department_name ?? 'No Engineer Team'); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $teamLabel => $groupedOptions): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+                                        <optgroup label="<?php echo e($teamLabel); ?>">
+                                            <?php $__currentLoopData = $groupedOptions; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $option): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+                                                <option value="<?php echo e($option->id); ?>"
+                                                    data-custom-properties='<?php echo json_encode($engineerCustomProperties($option), 15, 512) ?>'
+                                                    <?php if(in_array((string) $option->id, $selectedAssignedEngineerIds, true)): echo 'selected'; endif; ?>>
+                                                    <?php echo e($option->name); ?>
 
-                                            <?php if(!empty($option->matched_skill_names)): ?>
-                                                - <?php echo e(implode(', ', $option->matched_skill_names)); ?>
+                                                    <?php if(!empty($option->matched_skill_names)): ?>
+                                                        - <?php echo e(implode(', ', $option->matched_skill_names)); ?>
 
-                                            <?php endif; ?>
-                                        </option>
+                                                    <?php endif; ?>
+                                                </option>
+                                            <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?>
+                                        </optgroup>
                                     <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?>
                                 </select>
-                                <div class="form-text">Daftar ini diurutkan berdasarkan total skor recommendation, bukan hanya skill yang cocok.</div>
+                                <div class="form-text">Daftar ini diurutkan berdasarkan total skor recommendation dan dikelompokkan per Engineer Team.</div>
                             </div>
                         </div>
 
@@ -981,13 +991,17 @@ unset($__errorArgs, $__bag); ?>"
                                         data-searchable-select data-force-searchable-select="true"
                                         data-engineer-picker="true" data-search-placeholder="Search fallback engineer"
                                         class="form-select" name="assigned_engineer_ids[]" multiple>
-                                        <?php $__currentLoopData = $fallbackEngineerOptions; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $option): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
-                                            <option value="<?php echo e($option->id); ?>"
-                                                data-custom-properties='<?php echo json_encode($engineerCustomProperties($option), 15, 512) ?>'
-                                                <?php if(in_array((string) $option->id, $selectedAssignedEngineerIds, true)): echo 'selected'; endif; ?>>
-                                                <?php echo e($option->name); ?>
+                                        <?php $__currentLoopData = $fallbackEngineerOptions->groupBy(fn ($option) => $option->engineer_team_label ?? $option->department_name ?? 'No Engineer Team'); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $teamLabel => $groupedOptions): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+                                            <optgroup label="<?php echo e($teamLabel); ?>">
+                                                <?php $__currentLoopData = $groupedOptions; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $option): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+                                                    <option value="<?php echo e($option->id); ?>"
+                                                        data-custom-properties='<?php echo json_encode($engineerCustomProperties($option), 15, 512) ?>'
+                                                        <?php if(in_array((string) $option->id, $selectedAssignedEngineerIds, true)): echo 'selected'; endif; ?>>
+                                                        <?php echo e($option->name); ?>
 
-                                            </option>
+                                                    </option>
+                                                <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?>
+                                            </optgroup>
                                         <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?>
                                     </select>
                                     <div class="form-text">Bisa pilih lebih dari satu engineer. Score ticket akan dibagi rata ke semua engineer aktif.</div>
@@ -1016,13 +1030,17 @@ if (isset($__messageOriginal)) { $message = $__messageOriginal; }
 endif;
 unset($__errorArgs, $__bag); ?>"
                                 name="assigned_engineer_ids[]" multiple required>
-                                <?php $__currentLoopData = $fallbackEngineerOptions; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $option): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
-                                    <option value="<?php echo e($option->id); ?>"
-                                        data-custom-properties='<?php echo json_encode($engineerCustomProperties($option), 15, 512) ?>'
-                                        <?php if(in_array((string) $option->id, $selectedAssignedEngineerIds, true)): echo 'selected'; endif; ?>>
-                                        <?php echo e($option->name); ?>
+                                <?php $__currentLoopData = $fallbackEngineerOptions->groupBy(fn ($option) => $option->engineer_team_label ?? $option->department_name ?? 'No Engineer Team'); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $teamLabel => $groupedOptions): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+                                    <optgroup label="<?php echo e($teamLabel); ?>">
+                                        <?php $__currentLoopData = $groupedOptions; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $option): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+                                            <option value="<?php echo e($option->id); ?>"
+                                                data-custom-properties='<?php echo json_encode($engineerCustomProperties($option), 15, 512) ?>'
+                                                <?php if(in_array((string) $option->id, $selectedAssignedEngineerIds, true)): echo 'selected'; endif; ?>>
+                                                <?php echo e($option->name); ?>
 
-                                    </option>
+                                            </option>
+                                        <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?>
+                                    </optgroup>
                                 <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?>
                             </select>
                             <div class="form-text">Bisa pilih lebih dari satu engineer. Score ticket akan dibagi rata ke semua engineer aktif.</div>
@@ -1065,7 +1083,12 @@ $message = $__bag->first($__errorArgs[0]); ?> is-invalid <?php unset($message);
 if (isset($__messageOriginal)) { $message = $__messageOriginal; }
 endif;
 unset($__errorArgs, $__bag); ?>"
-                            value="<?php echo e(old('assigned_team_name', $ticket->assigned_team_name)); ?>" placeholder="Ops / Field Team">
+                            value="<?php echo e(old('assigned_team_name', $ticket->assigned_team_name)); ?>" placeholder="Ops / Field Team" list="engineer-team-name-options">
+                        <datalist id="engineer-team-name-options">
+                            <?php $__currentLoopData = $assignmentEngineerTeamOptions; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $teamOption): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+                                <option value="<?php echo e($teamOption); ?>"></option>
+                            <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?>
+                        </datalist>
                         <?php $__errorArgs = ['assigned_team_name'];
 $__bag = $errors->getBag($__errorArgs[1] ?? 'default');
 if ($__bag->has($__errorArgs[0])) :

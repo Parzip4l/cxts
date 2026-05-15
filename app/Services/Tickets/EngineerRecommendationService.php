@@ -161,6 +161,7 @@ class EngineerRecommendationService
             $engineer->setAttribute('match_score', $matchedSkills->count());
             $engineer->setAttribute('skill_score', $skillScore);
             $engineer->setAttribute('department_name', $engineer->department?->name);
+            $engineer->setAttribute('engineer_team_label', $engineer->department?->name ?? 'No Engineer Team');
             $engineer->setAttribute('availability_score', $availability['score']);
             $engineer->setAttribute('availability_status', $availability['status']);
             $engineer->setAttribute('availability_label', $availability['label']);
@@ -172,7 +173,7 @@ class EngineerRecommendationService
             $engineer->setAttribute('recommendation_score', $recommendationScore);
             $engineer->setAttribute('today_schedule_status', $schedule?->status);
             $engineer->setAttribute('today_shift_name', $schedule?->shift?->name);
-            $engineer->setAttribute('team_label', $schedule?->shift?->name ?? $engineer->department?->name);
+            $engineer->setAttribute('team_label', $engineer->department?->name);
 
             return $engineer;
         });
@@ -282,6 +283,7 @@ class EngineerRecommendationService
                 'name' => $engineer->name,
                 'department_id' => (int) ($engineer->department_id ?? 0),
                 'department_name' => $engineer->department_name,
+                'engineer_team_label' => $engineer->engineer_team_label,
                 'team_label' => $engineer->team_label,
                 'matched_skill_names' => $engineer->matched_skill_names ?? [],
                 'match_score' => (int) ($engineer->match_score ?? 0),

@@ -132,10 +132,11 @@
         && ! in_array($statusCode, ['REJECTED', 'COMPLETED', 'CLOSED', 'CANCELLED'], true)
         && $ticket->completed_at === null
         && $ticket->closed_at === null;
+    $canEditTicket = $currentUser?->can('update', $ticket);
     $engineerCustomProperties = function ($option) {
         return [
             'department_name' => $option->department_name ?? 'No department',
-            'team_label' => $option->team_label ?? 'No team/shift',
+            'team_label' => $option->engineer_team_label ?? $option->department_name ?? 'No Engineer Team',
             'availability_label' => $option->availability_label ?? 'Unknown',
             'availability_status' => $option->availability_status ?? 'unknown',
             'workload_label' => $option->workload_label ?? 'Light',
@@ -199,6 +200,11 @@
                             <div class="small text-muted">Requester</div>
                             <div class="fw-semibold">{{ $ticket->requester?->name ?? '-' }}</div>
                             <div class="small text-muted">{{ $ticket->requesterDepartment?->name ?? 'No department' }}</div>
+                            @if ($canEditTicket)
+                                <div class="mt-3">
+                                    <a href="{{ route('tickets.edit', $ticket) }}" class="btn btn-sm btn-outline-secondary">Edit Ticket</a>
+                                </div>
+                            @endif
                         </div>
                     </div>
 
@@ -813,7 +819,7 @@
 
                 <form method="GET" action="{{ route('tickets.show', $ticket) }}" class="row g-3 mb-3">
                     <div class="col-12">
-                        <div class="small text-muted">Saring shortlist engineer berdasarkan department dan shift operasional sebelum assign.</div>
+                        <div class="small text-muted">Saring shortlist engineer berdasarkan master Engineer Team. Shift hari ini tetap tampil sebagai informasi tambahan.</div>
                     </div>
                     <div class="col-12 col-md-12">
                         <label for="assignment_department_id" class="form-label">Filter Department</label>
@@ -829,20 +835,20 @@
                         </select>
                     </div>
                     <div class="col-12 col-md-12">
-                        <label for="assignment_team_label" class="form-label">Filter Team / Shift</label>
-                        <select id="assignment_team_label" name="assignment_team_label"
+                        <label for="assignment_engineer_team_label" class="form-label">Filter Engineer Team</label>
+                        <select id="assignment_engineer_team_label" name="assignment_engineer_team_label"
                             class="form-select" data-searchable-select data-force-searchable-select="true"
-                            data-search-placeholder="Search team or shift">
-                            <option value="">- All Teams / Shifts -</option>
-                            @foreach ($assignmentTeamOptions as $teamOption)
-                                <option value="{{ $teamOption }}" @selected((string) ($assignmentFilters['team_label'] ?? '') === (string) $teamOption)>
+                            data-search-placeholder="Search engineer team">
+                            <option value="">- All Engineer Teams -</option>
+                            @foreach ($assignmentEngineerTeamOptions as $teamOption)
+                                <option value="{{ $teamOption }}" @selected((string) ($assignmentFilters['engineer_team_label'] ?? '') === (string) $teamOption)>
                                     {{ $teamOption }}
                                 </option>
                             @endforeach
                         </select>
                     </div>
                     <div class="col-12 d-flex flex-wrap justify-content-end gap-2">
-                        @if (($assignmentFilters['department_id'] ?? null) || ($assignmentFilters['team_label'] ?? null))
+                        @if (($assignmentFilters['department_id'] ?? null) || ($assignmentFilters['engineer_team_label'] ?? null))
                             <a href="{{ route('tickets.show', $ticket) }}" class="btn btn-outline-light text-nowrap">Reset Filter</a>
                         @endif
                         <button type="submit" class="btn btn-outline-secondary text-nowrap">Apply Filters</button>
@@ -885,7 +891,7 @@
                                                     <div class="fw-semibold">{{ $option->name }}</div>
                                                     <div class="small text-muted">
                                                         {{ $option->department_name ?? 'No department' }}
-                                                        · {{ $option->team_label ?? 'No team/shift' }}
+                                                        · Engineer Team: {{ $option->engineer_team_label ?? $option->department_name ?? 'No Engineer Team' }}
                                                         · {{ $option->workload_open_tickets ?? 0 }} open ticket(s)
                                                     </div>
                                                     <div class="small text-muted">
@@ -915,26 +921,30 @@
                         </div>
 
                         <div class="col-12">
-                            <div class="border rounded p-3 bg-light-subtle h-100">
-                                <div class="fw-semibold mb-2">Recommended Engineers</div>
-                                <label for="recommended_engineer_id_ui" class="form-label">Best Match By Score</label>
-                                <select id="recommended_engineer_id_ui"
-                                    data-searchable-select data-force-searchable-select="true"
-                                    data-engineer-picker="true" data-search-placeholder="Search recommended engineer"
-                                    class="form-select @error('assigned_engineer_ids') is-invalid @enderror @error('assigned_engineer_ids.*') is-invalid @enderror"
-                                    name="assigned_engineer_ids[]" multiple>
-                                    @foreach ($engineerOptions as $option)
-                                        <option value="{{ $option->id }}"
-                                            data-custom-properties='@json($engineerCustomProperties($option))'
-                                            @selected(in_array((string) $option->id, $selectedAssignedEngineerIds, true))>
-                                            {{ $option->name }}
-                                            @if (!empty($option->matched_skill_names))
-                                                - {{ implode(', ', $option->matched_skill_names) }}
-                                            @endif
-                                        </option>
+                                <div class="border rounded p-3 bg-light-subtle h-100">
+                                    <div class="fw-semibold mb-2">Recommended Engineers</div>
+                                    <label for="recommended_engineer_id_ui" class="form-label">Best Match By Score</label>
+                                    <select id="recommended_engineer_id_ui"
+                                        data-searchable-select data-force-searchable-select="true"
+                                        data-engineer-picker="true" data-search-placeholder="Search recommended engineer"
+                                        class="form-select @error('assigned_engineer_ids') is-invalid @enderror @error('assigned_engineer_ids.*') is-invalid @enderror"
+                                        name="assigned_engineer_ids[]" multiple>
+                                    @foreach ($engineerOptions->groupBy(fn ($option) => $option->engineer_team_label ?? $option->department_name ?? 'No Engineer Team') as $teamLabel => $groupedOptions)
+                                        <optgroup label="{{ $teamLabel }}">
+                                            @foreach ($groupedOptions as $option)
+                                                <option value="{{ $option->id }}"
+                                                    data-custom-properties='@json($engineerCustomProperties($option))'
+                                                    @selected(in_array((string) $option->id, $selectedAssignedEngineerIds, true))>
+                                                    {{ $option->name }}
+                                                    @if (!empty($option->matched_skill_names))
+                                                        - {{ implode(', ', $option->matched_skill_names) }}
+                                                    @endif
+                                                </option>
+                                            @endforeach
+                                        </optgroup>
                                     @endforeach
                                 </select>
-                                <div class="form-text">Daftar ini diurutkan berdasarkan total skor recommendation, bukan hanya skill yang cocok.</div>
+                                <div class="form-text">Daftar ini diurutkan berdasarkan total skor recommendation dan dikelompokkan per Engineer Team.</div>
                             </div>
                         </div>
 
@@ -947,12 +957,16 @@
                                         data-searchable-select data-force-searchable-select="true"
                                         data-engineer-picker="true" data-search-placeholder="Search fallback engineer"
                                         class="form-select" name="assigned_engineer_ids[]" multiple>
-                                        @foreach ($fallbackEngineerOptions as $option)
-                                            <option value="{{ $option->id }}"
-                                                data-custom-properties='@json($engineerCustomProperties($option))'
-                                                @selected(in_array((string) $option->id, $selectedAssignedEngineerIds, true))>
-                                                {{ $option->name }}
-                                            </option>
+                                        @foreach ($fallbackEngineerOptions->groupBy(fn ($option) => $option->engineer_team_label ?? $option->department_name ?? 'No Engineer Team') as $teamLabel => $groupedOptions)
+                                            <optgroup label="{{ $teamLabel }}">
+                                                @foreach ($groupedOptions as $option)
+                                                    <option value="{{ $option->id }}"
+                                                        data-custom-properties='@json($engineerCustomProperties($option))'
+                                                        @selected(in_array((string) $option->id, $selectedAssignedEngineerIds, true))>
+                                                        {{ $option->name }}
+                                                    </option>
+                                                @endforeach
+                                            </optgroup>
                                         @endforeach
                                     </select>
                                     <div class="form-text">Bisa pilih lebih dari satu engineer. Score ticket akan dibagi rata ke semua engineer aktif.</div>
@@ -967,12 +981,16 @@
                                 data-engineer-picker="true" data-search-placeholder="Search engineer"
                                 class="form-select @error('assigned_engineer_ids') is-invalid @enderror @error('assigned_engineer_ids.*') is-invalid @enderror"
                                 name="assigned_engineer_ids[]" multiple required>
-                                @foreach ($fallbackEngineerOptions as $option)
-                                    <option value="{{ $option->id }}"
-                                        data-custom-properties='@json($engineerCustomProperties($option))'
-                                        @selected(in_array((string) $option->id, $selectedAssignedEngineerIds, true))>
-                                        {{ $option->name }}
-                                    </option>
+                                @foreach ($fallbackEngineerOptions->groupBy(fn ($option) => $option->engineer_team_label ?? $option->department_name ?? 'No Engineer Team') as $teamLabel => $groupedOptions)
+                                    <optgroup label="{{ $teamLabel }}">
+                                        @foreach ($groupedOptions as $option)
+                                            <option value="{{ $option->id }}"
+                                                data-custom-properties='@json($engineerCustomProperties($option))'
+                                                @selected(in_array((string) $option->id, $selectedAssignedEngineerIds, true))>
+                                                {{ $option->name }}
+                                            </option>
+                                        @endforeach
+                                    </optgroup>
                                 @endforeach
                             </select>
                             <div class="form-text">Bisa pilih lebih dari satu engineer. Score ticket akan dibagi rata ke semua engineer aktif.</div>
@@ -994,7 +1012,12 @@
                         <label for="assigned_team_name" class="form-label">Team</label>
                         <input type="text" id="assigned_team_name" name="assigned_team_name"
                             class="form-control @error('assigned_team_name') is-invalid @enderror"
-                            value="{{ old('assigned_team_name', $ticket->assigned_team_name) }}" placeholder="Ops / Field Team">
+                            value="{{ old('assigned_team_name', $ticket->assigned_team_name) }}" placeholder="Ops / Field Team" list="engineer-team-name-options">
+                        <datalist id="engineer-team-name-options">
+                            @foreach ($assignmentEngineerTeamOptions as $teamOption)
+                                <option value="{{ $teamOption }}"></option>
+                            @endforeach
+                        </datalist>
                         @error('assigned_team_name')
                             <div class="invalid-feedback">{{ $message }}</div>
                         @enderror

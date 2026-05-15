@@ -37,7 +37,7 @@ class TicketSubcategoryController extends Controller
         return view('modules.tickets.subcategories.index', [
             'ticketSubcategories' => $ticketSubcategories,
             'filters' => $filters,
-            'categoryOptions' => TicketCategory::query()->orderBy('name')->get(['id', 'name']),
+            'categoryOptions' => TicketCategory::query()->orderBy('name')->get(['id', 'code', 'name']),
         ]);
     }
 
@@ -45,7 +45,7 @@ class TicketSubcategoryController extends Controller
     {
         return view('modules.tickets.subcategories.form', [
             'ticketSubcategory' => new TicketSubcategory(),
-            'categoryOptions' => TicketCategory::query()->orderBy('name')->get(['id', 'name']),
+            'categoryOptions' => TicketCategory::query()->orderBy('name')->get(['id', 'code', 'name']),
             'engineerSkillOptions' => EngineerSkill::query()->where('is_active', true)->orderBy('name')->get(['id', 'name']),
             'approverOptions' => User::query()->whereIn('role', ['super_admin', 'operational_admin', 'supervisor'])->orderBy('name')->get(['id', 'name', 'role']),
             'approverStrategyOptions' => TicketCategory::approverStrategies(),
@@ -69,7 +69,7 @@ class TicketSubcategoryController extends Controller
     {
         return view('modules.tickets.subcategories.form', [
             'ticketSubcategory' => $ticketSubcategory,
-            'categoryOptions' => TicketCategory::query()->orderBy('name')->get(['id', 'name']),
+            'categoryOptions' => TicketCategory::query()->orderBy('name')->get(['id', 'code', 'name']),
             'engineerSkillOptions' => EngineerSkill::query()->where('is_active', true)->orderBy('name')->get(['id', 'name']),
             'approverOptions' => User::query()->whereIn('role', ['super_admin', 'operational_admin', 'supervisor'])->orderBy('name')->get(['id', 'name', 'role']),
             'approverStrategyOptions' => TicketCategory::approverStrategies(),

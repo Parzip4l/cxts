@@ -65,6 +65,11 @@ class TicketPolicy
             && (int) $ticket->requester_department_id === (int) $user->department_id;
     }
 
+    public function update(User $user, Ticket $ticket): bool
+    {
+        return $this->assign($user, $ticket);
+    }
+
     public function approve(User $user, Ticket $ticket): bool
     {
         if (! $ticket->canBeApprovedBy($user)) {

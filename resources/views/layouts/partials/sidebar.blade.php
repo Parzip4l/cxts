@@ -140,7 +140,7 @@
                                 <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('tickets.index', ['assignment_queue' => 'ready']) }}">Ready for Assignment</a></li>
                             @endif
                             @if ($canCreateTicketOps)
-                                <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('tickets.create') }}">Create Ticket</a></li>
+                                <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('tickets.index', ['open_create_modal' => 1]) }}">Create Ticket</a></li>
                             @endif
                         </ul>
                     </div>

@@ -20,11 +20,11 @@
             <div class="col-md-4">
                 <label for="ticket_category_id" class="form-label">Ticket Type</label>
                 <select id="ticket_category_id" name="ticket_category_id"
-                    class="form-select @error('ticket_category_id') is-invalid @enderror" required>
+                    class="form-select @error('ticket_category_id') is-invalid @enderror" data-searchable-select data-force-searchable-select="true" data-search-placeholder="Search ticket type code or name" required>
                     <option value="">- Select -</option>
                     @foreach ($categoryOptions as $option)
                         <option value="{{ $option->id }}" @selected((string) old('ticket_category_id', $ticketSubcategory->ticket_category_id) === (string) $option->id)>
-                            {{ $option->name }}
+                            {{ $option->code }} - {{ $option->name }}
                         </option>
                     @endforeach
                 </select>

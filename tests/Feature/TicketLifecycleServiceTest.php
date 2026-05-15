@@ -213,4 +213,58 @@ class TicketLifecycleServiceTest extends TestCase
         $this->assertEquals(0.5, (float) $assignments[0]->score_share);
         $this->assertEquals(0.5, (float) $assignments[1]->score_share);
     }
+
+    public function test_service_can_update_ticket_details_without_cancelling_ticket(): void
+    {
+        $department = Department::query()->create([
+            'code' => 'DEP-TICKET-EDIT',
+            'name' => 'Ticket Edit Department',
+            'is_active' => true,
+        ]);
+
+        $actor = User::factory()->create([
+            'email' => 'ticket.edit.actor@example.com',
+            'role' => 'super_admin',
+            'department_id' => $department->id,
+        ]);
+
+        $requester = User::factory()->create([
+            'email' => 'ticket.edit.requester@example.com',
+            'role' => 'requester',
+            'department_id' => $department->id,
+        ]);
+
+        $assigned = TicketStatus::query()->create([
+            'code' => 'ASSIGNED',
+            'name' => 'Assigned',
+            'is_open' => true,
+            'is_active' => true,
+        ]);
+
+        $ticket = Ticket::query()->create([
+            'ticket_number' => 'TCK-EDIT-0001',
+            'title' => 'Old title',
+            'description' => 'Old description',
+            'requester_id' => $requester->id,
+            'requester_department_id' => $department->id,
+            'ticket_status_id' => $assigned->id,
+            'source' => 'test',
+            'impact' => 'medium',
+            'urgency' => 'medium',
+        ]);
+
+        $updatedTicket = app(TicketService::class)->updateDetails($ticket, [
+            'title' => 'Updated title',
+            'description' => 'Updated description',
+        ], $actor);
+
+        $this->assertSame('Updated title', $updatedTicket->title);
+        $this->assertSame('Updated description', $updatedTicket->description);
+        $this->assertSame($assigned->id, $updatedTicket->ticket_status_id);
+
+        $this->assertDatabaseHas('ticket_activities', [
+            'ticket_id' => $ticket->id,
+            'activity_type' => 'ticket_updated',
+        ]);
+    }
 }

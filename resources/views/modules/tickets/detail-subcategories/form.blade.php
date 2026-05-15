@@ -14,11 +14,11 @@
             <div class="col-md-4">
                 <label for="ticket_subcategory_id" class="form-label">Ticket Category</label>
                 <select id="ticket_subcategory_id" name="ticket_subcategory_id"
-                    class="form-select @error('ticket_subcategory_id') is-invalid @enderror" required>
+                    class="form-select @error('ticket_subcategory_id') is-invalid @enderror" data-searchable-select data-force-searchable-select="true" data-search-placeholder="Search category code or name" required>
                     <option value="">- Select -</option>
                     @foreach ($categoryOptions as $option)
                         <option value="{{ $option->id }}" @selected((string) old('ticket_subcategory_id', $ticketDetailSubcategory->ticket_subcategory_id) === (string) $option->id)>
-                            {{ $option->category?->name ? $option->category->name.' / ' : '' }}{{ $option->name }}
+                            {{ $option->category?->code ? $option->category->code.' - ' : '' }}{{ $option->category?->name ? $option->category->name.' / ' : '' }}{{ $option->code }} - {{ $option->name }}
                         </option>
                     @endforeach
                 </select>

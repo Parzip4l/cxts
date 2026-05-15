@@ -150,7 +150,11 @@
     </div>
     <div class="card-body pt-3">
         <?php if(session('success')): ?>
-            <div class="alert alert-success"><?php echo e(session('success')); ?></div>
+            <div
+                class="alert alert-success"
+                id="ticket-list-success-alert"
+                tabindex="-1"
+            ><?php echo e(session('success')); ?></div>
         <?php endif; ?>
 
         <form method="GET" class="mb-3" id="ticket-list-filter-form">
@@ -168,7 +172,7 @@
                         <a href="<?php echo e(route('tickets.index')); ?>" class="btn btn-outline-light">Reset</a>
                         <button class="btn btn-primary" type="submit">Apply Filters</button>
                         <?php if (app(\Illuminate\Contracts\Auth\Access\Gate::class)->check('create', \App\Models\Ticket::class)): ?>
-                            <a href="<?php echo e(route('tickets.create')); ?>" class="btn btn-dark">Create Ticket</a>
+                            <button type="button" class="btn btn-dark" data-bs-toggle="modal" data-bs-target="#createTicketModal">Create Ticket</button>
                         <?php endif; ?>
                     </div>
                 </div>
@@ -394,7 +398,14 @@
                 </thead>
                 <tbody>
                     <?php $__empty_1 = true; $__currentLoopData = $tickets; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $ticket): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
-                        <tr>
+                        <tr
+                            class="<?php echo \Illuminate\Support\Arr::toCssClasses([
+                                'ticket-created-row' => (int) session('created_ticket_id') === (int) $ticket->id,
+                            ]); ?>"
+                            <?php if((int) session('created_ticket_id') === (int) $ticket->id): ?>
+                                data-created-ticket-row="true"
+                            <?php endif; ?>
+                        >
                             <td>
                                 <div class="fw-semibold"><?php echo e($ticket->ticket_number); ?></div>
                                 <small class="text-muted"><?php echo e(optional($ticket->created_at)->format('d M Y H:i')); ?></small>
@@ -467,7 +478,12 @@
                                 <?php endif; ?>
                             </td>
                             <td class="text-end">
-                                <a href="<?php echo e(route('tickets.show', $ticket)); ?>" class="btn btn-sm btn-outline-primary">Detail</a>
+                                <div class="d-inline-flex gap-2">
+                                    <?php if (app(\Illuminate\Contracts\Auth\Access\Gate::class)->check('update', $ticket)): ?>
+                                        <a href="<?php echo e(route('tickets.edit', $ticket)); ?>" class="btn btn-sm btn-outline-secondary">Edit</a>
+                                    <?php endif; ?>
+                                    <a href="<?php echo e(route('tickets.show', $ticket)); ?>" class="btn btn-sm btn-outline-primary">Detail</a>
+                                </div>
                             </td>
                         </tr>
                     <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?>
@@ -482,6 +498,29 @@
         <div class="mt-3"><?php echo e($tickets->links()); ?></div>
     </div>
 </div>
+
+<?php if (app(\Illuminate\Contracts\Auth\Access\Gate::class)->check('create', \App\Models\Ticket::class)): ?>
+    <div class="modal fade" id="createTicketModal" tabindex="-1" aria-labelledby="createTicketModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header">
+                    <div>
+                        <h5 class="modal-title" id="createTicketModalLabel">Create Ticket</h5>
+                        <div class="small text-muted">Buat ticket baru tanpa meninggalkan halaman Ticket List.</div>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <?php echo $__env->make('modules.tickets.tickets.partials.create-form-fields', [
+                        'isModal' => true,
+                        'formId' => 'ticket-create-modal-form',
+                        'returnTo' => $createTicketReturnTo ?? route('tickets.index'),
+                    ], \Illuminate\Support\Arr::except(get_defined_vars(), ['__data', '__path']))->render(); ?>
+                </div>
+            </div>
+        </div>
+    </div>
+<?php endif; ?>
 <?php $__env->stopSection(); ?>
 
 <?php $__env->startPush('styles'); ?>
@@ -554,19 +593,76 @@
         font-weight: 700;
         padding: .28rem .55rem;
     }
+
+    #createTicketModal .modal-dialog {
+        max-width: min(1140px, calc(100vw - 2rem));
+    }
+
+    #ticket-list-table tbody tr.ticket-created-row {
+        --ticket-created-row-glow: rgba(var(--bs-success-rgb), .18);
+        animation: ticket-created-row-pulse 4.5s ease-out 1;
+        background: linear-gradient(90deg, rgba(var(--bs-success-rgb), .12), transparent 28%);
+        box-shadow: inset 4px 0 0 rgba(var(--bs-success-rgb), .9);
+    }
+
+    @keyframes ticket-created-row-pulse {
+        0% {
+            background-color: rgba(var(--bs-success-rgb), .22);
+            box-shadow: inset 4px 0 0 rgba(var(--bs-success-rgb), 1), 0 0 0 0 var(--ticket-created-row-glow);
+        }
+
+        35% {
+            background-color: rgba(var(--bs-success-rgb), .14);
+            box-shadow: inset 4px 0 0 rgba(var(--bs-success-rgb), .95), 0 0 0 8px rgba(var(--bs-success-rgb), 0);
+        }
+
+        100% {
+            background-color: transparent;
+            box-shadow: inset 4px 0 0 rgba(var(--bs-success-rgb), .9), 0 0 0 0 rgba(var(--bs-success-rgb), 0);
+        }
+    }
 </style>
 <?php $__env->stopPush(); ?>
 
 <?php $__env->startPush('scripts'); ?>
+<?php echo $__env->make('modules.tickets.tickets.partials.create-form-script', \Illuminate\Support\Arr::except(get_defined_vars(), ['__data', '__path']))->render(); ?>
 <script>
     document.addEventListener('DOMContentLoaded', () => {
         const form = document.getElementById('ticket-list-filter-form');
         const ticketTable = document.getElementById('ticket-list-table');
         const columnToggles = document.querySelectorAll('[data-column-toggle]');
         const columnStorageKey = 'ticket_list_optional_columns';
+        const successAlert = document.getElementById('ticket-list-success-alert');
+        const createdTicketRow = document.querySelector('[data-created-ticket-row="true"]');
 
         if (!form) {
             return;
+        }
+
+        <?php if(session('ticket_created_from_modal')): ?>
+            if (successAlert) {
+                document.body.classList.remove('modal-open');
+                document.querySelectorAll('.modal-backdrop').forEach((backdrop) => backdrop.remove());
+
+                window.requestAnimationFrame(() => {
+                    successAlert.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start',
+                    });
+
+                    window.setTimeout(() => {
+                        successAlert.focus({
+                            preventScroll: true,
+                        });
+                    }, 250);
+                });
+            }
+        <?php endif; ?>
+
+        if (createdTicketRow) {
+            window.setTimeout(() => {
+                createdTicketRow.classList.remove('ticket-created-row');
+            }, 5000);
         }
 
         const categorySelect = form.querySelector('[name="ticket_category_id"]');
@@ -716,6 +812,20 @@
         });
     });
 </script>
+<?php if (app(\Illuminate\Contracts\Auth\Access\Gate::class)->check('create', \App\Models\Ticket::class)): ?>
+    <?php if($errors->any() || request()->boolean('open_create_modal')): ?>
+        <script>
+            document.addEventListener('DOMContentLoaded', function () {
+                const modalElement = document.getElementById('createTicketModal');
+                if (!modalElement || !window.bootstrap) {
+                    return;
+                }
+
+                window.bootstrap.Modal.getOrCreateInstance(modalElement).show();
+            });
+        </script>
+    <?php endif; ?>
+<?php endif; ?>
 <?php $__env->stopPush(); ?>
 
 <?php echo $__env->make('layouts.vertical', ['subtitle' => 'Tickets'], \Illuminate\Support\Arr::except(get_defined_vars(), ['__data', '__path']))->render(); ?><?php /**PATH /Users/muhamadsobirin/Documents/cxts/resources/views/modules/tickets/tickets/index.blade.php ENDPATH**/ ?>

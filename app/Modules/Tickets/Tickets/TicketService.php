@@ -675,6 +675,38 @@ class TicketService
         return $worklog->fresh('user:id,name');
     }
 
+    public function updateDetails(Ticket $ticket, array $data, ?User $actor = null): Ticket
+    {
+        return DB::transaction(function () use ($ticket, $data, $actor): Ticket {
+            $oldStatusId = $ticket->ticket_status_id;
+            $ticket->fill([
+                'title' => $data['title'],
+                'description' => $data['description'],
+                'updated_by_id' => $actor?->id,
+            ]);
+
+            $changes = collect(['title', 'description'])
+                ->filter(fn ($field) => $ticket->isDirty($field))
+                ->mapWithKeys(fn ($field) => [
+                    $field => [
+                        'old' => $ticket->getOriginal($field),
+                        'new' => $ticket->getAttribute($field),
+                    ],
+                ])
+                ->all();
+
+            if (! empty($changes)) {
+                $ticket->save();
+
+                $this->logActivity($ticket, $actor, 'ticket_updated', $oldStatusId, $oldStatusId, [
+                    'changes' => $changes,
+                ]);
+            }
+
+            return $ticket->fresh($this->ticketRelations());
+        });
+    }
+
     public function findStatusByCode(string $code): ?TicketStatus
     {
         return TicketStatus::query()
