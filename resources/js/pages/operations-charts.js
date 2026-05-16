@@ -325,13 +325,35 @@ function renderSlaPerformanceCharts(payload) {
 function renderEngineerEffectivenessCharts(payload) {
     const data = payload?.engineerEffectiveness ?? {};
     const engineers = data?.engineers ?? [];
+    const minimumQualifiedTickets = 5;
     const slaComparisonEngineers = [...engineers].sort((left, right) => {
+        const leftAssignedTickets = Number(left?.assigned_tickets ?? 0);
+        const rightAssignedTickets = Number(right?.assigned_tickets ?? 0);
+        const leftIsQualified = leftAssignedTickets >= minimumQualifiedTickets;
+        const rightIsQualified = rightAssignedTickets >= minimumQualifiedTickets;
         const leftAverage =
             (Number(left?.response_compliance_rate ?? 0) + Number(left?.resolution_compliance_rate ?? 0)) / 2;
         const rightAverage =
             (Number(right?.response_compliance_rate ?? 0) + Number(right?.resolution_compliance_rate ?? 0)) / 2;
 
-        return rightAverage - leftAverage;
+        if (leftIsQualified !== rightIsQualified) {
+            return leftIsQualified ? -1 : 1;
+        }
+
+        if (rightAverage !== leftAverage) {
+            return rightAverage - leftAverage;
+        }
+
+        if (rightAssignedTickets !== leftAssignedTickets) {
+            return rightAssignedTickets - leftAssignedTickets;
+        }
+
+        return String(left?.engineer_name ?? "-").localeCompare(String(right?.engineer_name ?? "-"));
+    });
+    const slaTicketLabels = slaComparisonEngineers.map((item) => {
+        const assignedTickets = Number(item?.assigned_tickets ?? 0);
+
+        return `${assignedTickets.toFixed(assignedTickets % 1 === 0 ? 0 : 2)} tiket`;
     });
     const slaChartHeight = Math.max(340, slaComparisonEngineers.length * 36);
 
@@ -376,11 +398,17 @@ function renderEngineerEffectivenessCharts(payload) {
         xaxis: {
             categories: slaComparisonEngineers.map((item) => item.engineer_name ?? "-"),
             min: 0,
-            max: 100,
+            max: 105,
             tickAmount: 5,
             labels: {
                 formatter: function (value) {
-                    return `${Number(value).toFixed(0)}%`;
+                    const numericValue = Number(value);
+
+                    if (numericValue > 100) {
+                        return "";
+                    }
+
+                    return `${numericValue.toFixed(0)}%`;
                 },
             },
         },
@@ -391,8 +419,34 @@ function renderEngineerEffectivenessCharts(payload) {
         },
         colors: ["#0ea5e9", "#ef4444"],
         legend: { position: "top" },
-        dataLabels: { enabled: false },
+        dataLabels: {
+            enabled: true,
+            offsetX: 28,
+            style: {
+                colors: ["#64748b"],
+                fontSize: "11px",
+                fontWeight: 500,
+            },
+            formatter: function (_value, context) {
+                if (context.seriesIndex !== 1) {
+                    return "";
+                }
+
+                return slaTicketLabels[context.dataPointIndex] ?? "";
+            },
+        },
         tooltip: {
+            shared: true,
+            intersect: false,
+            x: {
+                formatter: function (_value, context) {
+                    const engineer = slaComparisonEngineers[context.dataPointIndex];
+                    const assignedTickets = Number(engineer?.assigned_tickets ?? 0);
+                    const ticketLabel = assignedTickets.toFixed(assignedTickets % 1 === 0 ? 0 : 2);
+
+                    return `${engineer?.engineer_name ?? "-"} • ${ticketLabel} tiket`;
+                },
+            },
             y: {
                 formatter: function (value) {
                     return `${Number(value).toFixed(2)}%`;
