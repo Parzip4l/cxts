@@ -3,6 +3,7 @@
 namespace Tests\Feature\Api;
 
 use App\Models\Department;
+use App\Models\TicketActivity;
 use App\Models\Ticket;
 use App\Models\TicketStatus;
 use App\Models\TicketWorklog;
@@ -112,6 +113,22 @@ class DashboardApiTest extends TestCase
             'urgency' => 'low',
         ]);
 
+        $ticketReopened = Ticket::query()->create([
+            'ticket_number' => 'TCK-DASH-0005',
+            'title' => 'Issue Reopened',
+            'description' => 'Issue reopened description',
+            'ticket_status_id' => $statusCompleted->id,
+            'assigned_engineer_id' => $engineerTwo->id,
+            'response_due_at' => now()->addMinutes(30),
+            'resolution_due_at' => now()->addHours(4),
+            'started_at' => now()->subMinutes(40),
+            'completed_at' => now()->subMinutes(10),
+            'resolved_at' => now()->subMinutes(10),
+            'source' => 'web',
+            'impact' => 'medium',
+            'urgency' => 'medium',
+        ]);
+
         Ticket::query()->create([
             'ticket_number' => 'TCK-DASH-0004',
             'title' => 'Issue D',
@@ -141,6 +158,31 @@ class DashboardApiTest extends TestCase
             'duration_minutes' => 35,
         ]);
 
+        $logActivity = function (Ticket $ticket, string $type, $at): void {
+            $activity = TicketActivity::query()->create([
+                'ticket_id' => $ticket->id,
+                'activity_type' => $type,
+            ]);
+
+            $activity->timestamps = false;
+            $activity->forceFill([
+                'created_at' => $at,
+                'updated_at' => $at,
+            ])->save();
+        };
+
+        $logActivity($ticketOnTime, 'work_started', now()->addMinutes(20));
+        $logActivity($ticketOnTime, 'work_completed', now()->addHours(2));
+
+        $logActivity($ticketBreach, 'work_started', now()->addMinutes(50));
+        $logActivity($ticketBreach, 'work_completed', now()->addHours(3));
+
+        $logActivity($ticketReopened, 'work_started', now()->subHours(5));
+        $logActivity($ticketReopened, 'work_completed', now()->subHours(4));
+        $logActivity($ticketReopened, 'ticket_reopened', now()->subHours(2));
+        $logActivity($ticketReopened, 'work_started', now()->subMinutes(40));
+        $logActivity($ticketReopened, 'work_completed', now()->subMinutes(10));
+
         $token = $this->postJson('/api/v1/auth/login', [
             'email' => $supervisor->email,
             'password' => 'secret123',
@@ -151,9 +193,11 @@ class DashboardApiTest extends TestCase
         $this->withHeader('Authorization', 'Bearer '.$token)
             ->getJson('/api/v1/dashboard/overview'.$query)
             ->assertOk()
-            ->assertJsonPath('summary.total_tickets', 4)
-            ->assertJsonPath('summary.mttr_minutes', 115)
-            ->assertJsonPath('summary.mttr_ticket_count', 2)
+            ->assertJsonPath('summary.total_tickets', 5)
+            ->assertJsonPath('summary.mttr_minutes', 86.67)
+            ->assertJsonPath('summary.mttr_ticket_count', 3)
+            ->assertJsonPath('summary.reopened_ticket_count', 1)
+            ->assertJsonPath('summary.reopen_rate', 33.33)
             ->assertJsonPath('sla.response.breached', 2)
             ->assertJsonPath('sla.resolution.breached', 1);
 
@@ -163,7 +207,7 @@ class DashboardApiTest extends TestCase
             ->assertJsonPath('summary.engineer_count', 2)
             ->assertJsonPath('engineers.0.engineer_name', $engineerOne->name)
             ->assertJsonPath('engineers.0.assigned_tickets', 2)
-            ->assertJsonPath('summary.total_assigned_tickets', 3);
+            ->assertJsonPath('summary.total_assigned_tickets', 4);
 
         CarbonImmutable::setTestNow();
     }

@@ -57,6 +57,7 @@
         $responseTone = $complianceTone($responseCompliance);
         $resolutionTone = $complianceTone($resolutionCompliance);
         $mttrMinutes = $ticketSummary['mttr_minutes'];
+        $reopenRate = (float) ($ticketSummary['reopen_rate'] ?? 0);
         $formatDuration = function ($minutes) {
             if ($minutes === null) {
                 return '-';
@@ -168,17 +169,17 @@
                 <div class="card-body p-4">
                     <div class="d-flex justify-content-between align-items-start mb-4">
                         <div>
-                            <div class="text-muted small text-uppercase fw-semibold mb-2">MTTR</div>
+                            <div class="text-muted small text-uppercase fw-semibold mb-2">MTTR Final Cycle</div>
                             <h3 class="mb-1">{{ $formatDuration($mttrMinutes) }}</h3>
-                            <div class="small text-muted">Measured tickets: {{ number_format($ticketSummary['mttr_ticket_count']) }}</div>
+                            <div class="small text-muted">Measured final cycles: {{ number_format($ticketSummary['mttr_ticket_count']) }}</div>
                         </div>
                         <span class="avatar-md bg-info bg-opacity-10 rounded-circle d-flex align-items-center justify-content-center dashboard-icon-shell">
                             <iconify-icon icon="solar:restart-outline" class="fs-28 text-info"></iconify-icon>
                         </span>
                     </div>
                     <div class="d-flex justify-content-between align-items-center mb-2">
-                        <span class="badge bg-primary-subtle text-primary">Repair Speed</span>
-                        <span class="small text-muted">{{ $mttrMinutes !== null ? number_format($mttrMinutes, 2) . ' min' : 'No data' }}</span>
+                        <span class="badge bg-primary-subtle text-primary">Final Cycle</span>
+                        <span class="small text-muted">Reopen {{ number_format($reopenRate, 2) }}%</span>
                     </div>
                     <div class="progress bg-light" style="height: 10px;">
                         <div class="progress-bar bg-primary" style="width: {{ $mttrMinutes !== null ? max(8, min(100, 100 - min(95, $mttrMinutes / 6))) : 8 }}%"></div>
@@ -302,9 +303,16 @@
                         </div>
                         <div class="col-md-6">
                             <div class="dashboard-mini-panel rounded-3 p-3 h-100">
-                                <div class="text-muted text-uppercase fw-semibold small mb-2">MTTR</div>
+                                <div class="text-muted text-uppercase fw-semibold small mb-2">MTTR Final Cycle</div>
                                 <h4 class="mb-1">{{ $formatDuration($mttrMinutes) }}</h4>
-                                <div class="small text-muted">Rata-rata waktu dari mulai pengerjaan sampai ticket resolved/completed.</div>
+                                <div class="small text-muted">Rata-rata durasi dari work started terakhir sampai work completed terakhir pada siklus final.</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="dashboard-mini-panel rounded-3 p-3 h-100">
+                                <div class="text-muted text-uppercase fw-semibold small mb-2">Reopen Rate</div>
+                                <h4 class="mb-1">{{ number_format($reopenRate, 2) }}%</h4>
+                                <div class="small text-muted">{{ number_format($ticketSummary['reopened_ticket_count']) }} dari {{ number_format($ticketSummary['mttr_ticket_count']) }} ticket final cycle pernah dibuka kembali.</div>
                             </div>
                         </div>
                         <div class="col-md-6">

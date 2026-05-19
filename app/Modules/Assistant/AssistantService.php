@@ -2,6 +2,10 @@
 
 namespace App\Modules\Assistant;
 
+use Carbon\CarbonImmutable;
+use App\Models\Asset;
+use App\Models\AssetLocation;
+use App\Models\AssetStatus;
 use App\Models\Inspection;
 use App\Models\Ticket;
 use App\Models\User;
@@ -34,6 +38,18 @@ class AssistantService
             return $this->ticketLookupResponse($user, $ticketNumber);
         }
 
+        if ($this->isEngineerAnalyticsIntent($normalized)) {
+            return $this->engineerAnalyticsResponse($user, $normalized);
+        }
+
+        if ($this->isTicketMetricIntent($normalized)) {
+            return $this->ticketMetricResponse($user, $normalized);
+        }
+
+        if ($this->isAssetInsightIntent($normalized)) {
+            return $this->assetInsightResponse($user, $normalized);
+        }
+
         if ($this->containsAny($normalized, ['mttr', 'mean time to repair'])) {
             return $this->mttrResponse($user);
         }
@@ -59,7 +75,7 @@ class AssistantService
         }
 
         return [
-            'message' => "Saya hanya menjawab hal yang terkait CXTS, seperti status ticket, ringkasan ticket/task/inspection, MTTR, SLA, dan panduan modul sesuai role Anda.\n\nCoba pertanyaan seperti: " . implode(' | ', $this->suggestionsForRole($user)),
+            'message' => "Saya hanya menjawab hal yang terkait CXTS, seperti status ticket, ringkasan ticket/task/inspection, insight engineer, SLA, asset, dan panduan modul sesuai role Anda.\n\nCoba pertanyaan seperti: " . implode(' | ', $this->suggestionsForRole($user)),
             'suggestions' => $this->suggestionsForRole($user),
         ];
     }
@@ -93,18 +109,302 @@ class AssistantService
 
         if ($mttrMinutes === null || $ticketCount === 0) {
             return [
-                'message' => 'Belum ada cukup data ticket started/completed pada periode aktif untuk menghitung MTTR.',
+                'message' => 'Belum ada cukup data final cycle pada periode aktif untuk menghitung MTTR final cycle.',
                 'suggestions' => $this->suggestionsForRole($user),
             ];
         }
 
+        $reopenRate = (float) ($overview['summary']['reopen_rate'] ?? 0);
+        $reopenedTicketCount = (int) ($overview['summary']['reopened_ticket_count'] ?? 0);
+
         return [
             'message' => sprintf(
-                "MTTR pada periode aktif saat ini adalah %s menit, dihitung dari %s ticket yang punya waktu mulai kerja dan selesai.\n\nDefinisi yang dipakai: rata-rata durasi dari `started_at` ke `resolved_at` atau `completed_at`.",
+                "MTTR final cycle pada periode aktif saat ini adalah %s menit, dihitung dari %s ticket yang memiliki siklus kerja final lengkap.\n- Reopen rate companion: %s%% (%s ticket pernah dibuka kembali)\n\nDefinisi yang dipakai: rata-rata durasi dari `work_started` terakhir ke `work_completed` terakhir pada siklus final ticket. Ticket yang masih terbuka setelah reopen tidak ikut masuk sample final cycle.",
                 number_format((float) $mttrMinutes, 2),
-                number_format($ticketCount)
+                number_format($ticketCount),
+                number_format($reopenRate, 2),
+                number_format($reopenedTicketCount)
             ),
             'suggestions' => ['Berapa ticket overdue saat ini?', 'Berapa ticket unassigned saat ini?', 'Modul apa yang bisa saya akses?'],
+        ];
+    }
+
+    private function ticketMetricResponse(User $user, string $normalized): array
+    {
+        [$from, $to, $label] = $this->resolveAssistantPeriod($normalized);
+        $query = $this->ticketScopedQuery($user);
+
+        if ($this->containsAny($normalized, ['rata rata', 'rata-rata', 'average', 'avg'])) {
+            $createdByDay = (clone $query)
+                ->whereBetween('tickets.created_at', [$from, $to])
+                ->selectRaw('DATE(tickets.created_at) as day, COUNT(*) as total')
+                ->groupBy('day')
+                ->pluck('total', 'day');
+
+            $daysInRange = max(1, $from->diffInDays($to) + 1);
+            $averageCreated = round(array_sum($createdByDay->all()) / $daysInRange, 2);
+
+            return [
+                'message' => sprintf(
+                    "Rata-rata ticket masuk %s adalah %s ticket per hari.\n- Total ticket created: %s\n- Jumlah hari pada periode: %s",
+                    $label,
+                    number_format($averageCreated, 2),
+                    number_format((int) array_sum($createdByDay->all())),
+                    number_format($daysInRange)
+                ),
+                'suggestions' => ['Berapa ticket closed hari ini?', 'Berapa MTTR saat ini?', 'Modul apa yang bisa saya akses?'],
+            ];
+        }
+
+        if ($this->containsAny($normalized, ['closed', 'ditutup'])) {
+            $closedCount = (clone $query)
+                ->whereNotNull('tickets.closed_at')
+                ->whereBetween('tickets.closed_at', [$from, $to])
+                ->count();
+
+            return [
+                'message' => sprintf('Jumlah ticket closed %s adalah %s ticket.', $label, number_format($closedCount)),
+                'suggestions' => ['Berapa ticket completed hari ini?', 'Berapa ticket overdue saat ini?', 'Modul apa yang bisa saya akses?'],
+            ];
+        }
+
+        if ($this->containsAny($normalized, ['completed', 'selesai', 'resolved'])) {
+            $completedCount = (clone $query)
+                ->whereNotNull('tickets.completed_at')
+                ->whereBetween('tickets.completed_at', [$from, $to])
+                ->count();
+
+            return [
+                'message' => sprintf('Jumlah ticket completed %s adalah %s ticket.', $label, number_format($completedCount)),
+                'suggestions' => ['Berapa ticket closed hari ini?', 'Berapa MTTR saat ini?', 'Modul apa yang bisa saya akses?'],
+            ];
+        }
+
+        if ($this->containsAny($normalized, ['open', 'terbuka', 'ongoing', 'aktif'])) {
+            $openCount = (clone $query)
+                ->whereNull('tickets.completed_at')
+                ->whereNull('tickets.closed_at')
+                ->whereBetween('tickets.created_at', [$from, $to])
+                ->count();
+
+            return [
+                'message' => sprintf('Jumlah ticket open %s adalah %s ticket.', $label, number_format($openCount)),
+                'suggestions' => ['Berapa ticket closed hari ini?', 'Berapa ticket overdue saat ini?', 'Modul apa yang bisa saya akses?'],
+            ];
+        }
+
+        $createdCount = (clone $query)
+            ->whereBetween('tickets.created_at', [$from, $to])
+            ->count();
+
+        return [
+            'message' => sprintf('Jumlah ticket yang dibuat %s adalah %s ticket.', $label, number_format($createdCount)),
+            'suggestions' => ['Berapa ticket closed hari ini?', 'Berapa rata-rata tiket bulan ini?', 'Modul apa yang bisa saya akses?'],
+        ];
+    }
+
+    private function engineerAnalyticsResponse(User $user, string $normalized): array
+    {
+        if (! $user->hasPermission('dashboard.view_ops')) {
+            return $this->forbiddenMetricResponse($user, 'Insight engineer hanya tersedia untuk role operasional yang punya akses dashboard ops.');
+        }
+
+        [$from, $to, $label] = $this->resolveAssistantPeriod($normalized, 'month');
+        $effectiveness = $this->operationsDashboardService->engineerEffectiveness($user, [
+            'date_from' => $from->toDateString(),
+            'date_to' => $to->toDateString(),
+        ]);
+
+        $engineers = collect($effectiveness['engineers'] ?? []);
+
+        if ($engineers->isEmpty()) {
+            return [
+                'message' => sprintf('Belum ada data engineer assignment %s untuk menghitung insight engineer.', $label),
+                'suggestions' => $this->suggestionsForRole($user),
+            ];
+        }
+
+        if ($this->containsAny($normalized, ['paling banyak close', 'close ticket terbanyak', 'closed ticket terbanyak', 'paling banyak selesai', 'paling banyak completed'])) {
+            $topEngineer = $engineers
+                ->sort(fn (array $left, array $right) => [
+                    (float) ($right['completed_tickets'] ?? 0),
+                    (float) ($right['completion_rate'] ?? 0),
+                ] <=> [
+                    (float) ($left['completed_tickets'] ?? 0),
+                    (float) ($left['completion_rate'] ?? 0),
+                ])
+                ->first();
+
+            return [
+                'message' => sprintf(
+                    "Engineer dengan ticket closed/completed terbanyak %s adalah %s.\n- Completed tickets: %s\n- Assigned tickets: %s\n- Completion rate: %s%%\n- Open tickets: %s",
+                    $label,
+                    $topEngineer['engineer_name'] ?? 'Unknown',
+                    number_format((float) ($topEngineer['completed_tickets'] ?? 0), 2),
+                    number_format((float) ($topEngineer['assigned_tickets'] ?? 0), 2),
+                    number_format((float) ($topEngineer['completion_rate'] ?? 0), 2),
+                    number_format((float) ($topEngineer['open_tickets'] ?? 0), 2)
+                ),
+                'suggestions' => ['Siapa engineer workload tertinggi bulan ini?', 'Siapa engineer dengan SLA terbaik bulan ini?', 'Berapa MTTR saat ini?'],
+            ];
+        }
+
+        if ($this->containsAny($normalized, ['workload tertinggi', 'beban kerja tertinggi', 'paling sibuk', 'workload paling tinggi'])) {
+            $topEngineer = $engineers
+                ->sort(fn (array $left, array $right) => [
+                    (float) ($right['open_tickets'] ?? 0),
+                    (float) ($right['assigned_tickets'] ?? 0),
+                    (int) ($right['total_worklog_minutes'] ?? 0),
+                ] <=> [
+                    (float) ($left['open_tickets'] ?? 0),
+                    (float) ($left['assigned_tickets'] ?? 0),
+                    (int) ($left['total_worklog_minutes'] ?? 0),
+                ])
+                ->first();
+
+            return [
+                'message' => sprintf(
+                    "Engineer dengan workload tertinggi %s adalah %s.\n- Open tickets: %s\n- Assigned tickets: %s\n- Completed tickets: %s\n- Total worklog: %s menit",
+                    $label,
+                    $topEngineer['engineer_name'] ?? 'Unknown',
+                    number_format((float) ($topEngineer['open_tickets'] ?? 0), 2),
+                    number_format((float) ($topEngineer['assigned_tickets'] ?? 0), 2),
+                    number_format((float) ($topEngineer['completed_tickets'] ?? 0), 2),
+                    number_format((int) ($topEngineer['total_worklog_minutes'] ?? 0))
+                ),
+                'suggestions' => ['Siapa engineer paling efektif bulan ini?', 'Siapa engineer paling banyak close ticket bulan ini?', 'Berapa ticket overdue saat ini?'],
+            ];
+        }
+
+        if ($this->containsAny($normalized, ['sla terbaik', 'sla paling baik', 'compliance terbaik', 'sla paling bagus'])) {
+            $topEngineer = $engineers
+                ->sort(fn (array $left, array $right) => [
+                    (float) ($right['resolution_compliance_rate'] ?? 0),
+                    (float) ($right['response_compliance_rate'] ?? 0),
+                    (float) ($right['effectiveness_score'] ?? 0),
+                ] <=> [
+                    (float) ($left['resolution_compliance_rate'] ?? 0),
+                    (float) ($left['response_compliance_rate'] ?? 0),
+                    (float) ($left['effectiveness_score'] ?? 0),
+                ])
+                ->first();
+
+            return [
+                'message' => sprintf(
+                    "Engineer dengan SLA terbaik %s adalah %s.\n- Resolution SLA compliance: %s%%\n- Response SLA compliance: %s%%\n- Effectiveness score: %s\n- Assigned tickets: %s",
+                    $label,
+                    $topEngineer['engineer_name'] ?? 'Unknown',
+                    number_format((float) ($topEngineer['resolution_compliance_rate'] ?? 0), 2),
+                    number_format((float) ($topEngineer['response_compliance_rate'] ?? 0), 2),
+                    number_format((float) ($topEngineer['effectiveness_score'] ?? 0), 2),
+                    number_format((float) ($topEngineer['assigned_tickets'] ?? 0), 2)
+                ),
+                'suggestions' => ['Siapa engineer paling efektif bulan ini?', 'Siapa engineer workload tertinggi bulan ini?', 'Berapa MTTR saat ini?'],
+            ];
+        }
+
+        $topEngineer = $engineers->first();
+
+        return [
+            'message' => sprintf(
+                "Engineer paling efektif %s adalah %s.\n- Effectiveness score: %s\n- Assigned tickets: %s\n- Completed tickets: %s\n- Completion rate: %s%%\n- Response SLA compliance: %s%%\n- Resolution SLA compliance: %s%%\n- Total worklog: %s menit",
+                $label,
+                $topEngineer['engineer_name'] ?? 'Unknown',
+                number_format((float) ($topEngineer['effectiveness_score'] ?? 0), 2),
+                number_format((float) ($topEngineer['assigned_tickets'] ?? 0), 2),
+                number_format((float) ($topEngineer['completed_tickets'] ?? 0), 2),
+                number_format((float) ($topEngineer['completion_rate'] ?? 0), 2),
+                number_format((float) ($topEngineer['response_compliance_rate'] ?? 0), 2),
+                number_format((float) ($topEngineer['resolution_compliance_rate'] ?? 0), 2),
+                number_format((int) ($topEngineer['total_worklog_minutes'] ?? 0))
+            ),
+            'suggestions' => ['Siapa engineer paling banyak close ticket bulan ini?', 'Siapa engineer workload tertinggi bulan ini?', 'Siapa engineer dengan SLA terbaik bulan ini?'],
+        ];
+    }
+
+    private function assetInsightResponse(User $user, string $normalized): array
+    {
+        if (! $user->hasPermission('asset.manage')) {
+            return $this->forbiddenMetricResponse($user, 'Insight asset hanya tersedia untuk role yang punya akses data asset.');
+        }
+
+        if ($this->containsAny($normalized, ['asset status', 'status asset']) && $this->containsAny($normalized, ['berapa', 'jumlah', 'total'])) {
+            return [
+                'message' => sprintf('Jumlah master asset status aktif saat ini adalah %s status.', number_format(AssetStatus::query()->where('is_active', true)->count())),
+                'suggestions' => ['Status asset apa yang paling banyak dipakai?', 'Berapa total asset location?', 'Berapa total asset aktif?'],
+            ];
+        }
+
+        if ($this->containsAny($normalized, ['asset location', 'lokasi asset']) && $this->containsAny($normalized, ['berapa', 'jumlah', 'total'])) {
+            return [
+                'message' => sprintf('Jumlah master asset location aktif saat ini adalah %s lokasi.', number_format(AssetLocation::query()->where('is_active', true)->count())),
+                'suggestions' => ['Lokasi asset mana yang paling banyak?', 'Berapa total asset aktif?', 'Status asset apa yang paling banyak dipakai?'],
+            ];
+        }
+
+        if ($this->containsAny($normalized, ['status asset', 'asset status', 'status paling banyak', 'status terbanyak'])) {
+            $topStatus = AssetStatus::query()
+                ->withCount('assets')
+                ->orderByDesc('assets_count')
+                ->orderBy('name')
+                ->first();
+
+            if ($topStatus === null) {
+                return [
+                    'message' => 'Belum ada data asset status untuk diringkas.',
+                    'suggestions' => $this->suggestionsForRole($user),
+                ];
+            }
+
+            return [
+                'message' => sprintf(
+                    "Status asset yang paling banyak dipakai saat ini adalah %s.\n- Total asset pada status ini: %s\n- Status operasional: %s",
+                    $topStatus->name,
+                    number_format((int) $topStatus->assets_count),
+                    $topStatus->is_operational ? 'Ya' : 'Tidak'
+                ),
+                'suggestions' => ['Berapa total asset aktif?', 'Lokasi asset mana yang paling banyak?', 'Berapa total asset status?'],
+            ];
+        }
+
+        if ($this->containsAny($normalized, ['asset location', 'lokasi asset', 'lokasi terbanyak', 'location terbanyak', 'location paling banyak'])) {
+            $topLocation = AssetLocation::query()
+                ->withCount('assets')
+                ->orderByDesc('assets_count')
+                ->orderBy('name')
+                ->first();
+
+            if ($topLocation === null) {
+                return [
+                    'message' => 'Belum ada data asset location untuk diringkas.',
+                    'suggestions' => $this->suggestionsForRole($user),
+                ];
+            }
+
+            return [
+                'message' => sprintf(
+                    "Lokasi asset dengan jumlah asset terbanyak saat ini adalah %s.\n- Total asset: %s",
+                    $topLocation->name,
+                    number_format((int) $topLocation->assets_count)
+                ),
+                'suggestions' => ['Berapa total asset aktif?', 'Status asset apa yang paling banyak dipakai?', 'Berapa total asset location?'],
+            ];
+        }
+
+        $totalAssets = Asset::query()->count();
+        $activeAssets = Asset::query()->where('is_active', true)->count();
+        $operationalAssets = Asset::query()
+            ->whereHas('status', fn (Builder $statusQuery) => $statusQuery->where('is_operational', true))
+            ->count();
+
+        return [
+            'message' => sprintf(
+                "Ringkasan asset saat ini:\n- Total asset: %s\n- Asset aktif: %s\n- Asset dengan status operasional: %s",
+                number_format($totalAssets),
+                number_format($activeAssets),
+                number_format($operationalAssets)
+            ),
+            'suggestions' => ['Status asset apa yang paling banyak dipakai?', 'Lokasi asset mana yang paling banyak?', 'Berapa total asset status?'],
         ];
     }
 
@@ -120,12 +420,13 @@ class AssistantService
 
         return [
             'message' => sprintf(
-                "Ringkasan operasional saat ini:\n- Ticket overdue resolution: %s\n- Ticket unassigned: %s\n- Response SLA compliance: %s%%\n- Resolution SLA compliance: %s%%\n- MTTR: %s menit",
+                "Ringkasan operasional saat ini:\n- Ticket overdue resolution: %s\n- Ticket unassigned: %s\n- Response SLA compliance: %s%%\n- Resolution SLA compliance: %s%%\n- MTTR final cycle: %s menit\n- Reopen rate: %s%%",
                 number_format((int) ($summary['overdue_resolution_tickets'] ?? 0)),
                 number_format((int) ($summary['unassigned_tickets'] ?? 0)),
                 number_format((float) ($sla['response']['compliance_rate'] ?? 0), 2),
                 number_format((float) ($sla['resolution']['compliance_rate'] ?? 0), 2),
-                number_format((float) ($summary['mttr_minutes'] ?? 0), 2)
+                number_format((float) ($summary['mttr_minutes'] ?? 0), 2),
+                number_format((float) ($summary['reopen_rate'] ?? 0), 2)
             ),
             'suggestions' => ['Berapa MTTR saat ini?', 'Status ticket TCK-DASH-0001', 'Modul apa yang bisa saya akses?'],
         ];
@@ -245,13 +546,28 @@ class AssistantService
     private function suggestionsForRole(User $user): array
     {
         return match ($user->role) {
-            'super_admin', 'operational_admin', 'supervisor' => [
+            'super_admin', 'operational_admin' => [
                 'Berapa MTTR saat ini?',
+                'Berapa ticket closed hari ini?',
+                'Siapa engineer paling efektif bulan ini?',
+                'Siapa engineer workload tertinggi bulan ini?',
+                'Siapa engineer dengan SLA terbaik bulan ini?',
+                'Berapa total asset aktif?',
+                'Status asset apa yang paling banyak dipakai?',
+            ],
+            'supervisor' => [
+                'Berapa MTTR saat ini?',
+                'Berapa ticket closed hari ini?',
+                'Siapa engineer paling efektif bulan ini?',
+                'Siapa engineer workload tertinggi bulan ini?',
+                'Siapa engineer dengan SLA terbaik bulan ini?',
                 'Berapa ticket overdue saat ini?',
-                'Status ticket TCK-...',
+                'Berapa rata-rata tiket bulan ini?',
             ],
             'engineer' => [
                 'Task saya',
+                'Berapa ticket open hari ini?',
+                'Berapa ticket completed hari ini?',
                 'Status ticket TCK-...',
                 'Modul apa yang bisa saya akses?',
             ],
@@ -282,6 +598,65 @@ class AssistantService
         }
 
         return false;
+    }
+
+    private function isTicketMetricIntent(string $normalized): bool
+    {
+        if (! $this->containsAny($normalized, ['ticket', 'tiket'])) {
+            return false;
+        }
+
+        return $this->containsAny($normalized, [
+            'closed',
+            'ditutup',
+            'completed',
+            'selesai',
+            'resolved',
+            'rata rata',
+            'rata-rata',
+            'average',
+            'avg',
+            'hari ini',
+            'minggu ini',
+            'bulan ini',
+        ]);
+    }
+
+    private function isEngineerAnalyticsIntent(string $normalized): bool
+    {
+        if (! $this->containsAny($normalized, ['engineer', 'teknisi'])) {
+            return false;
+        }
+
+        return $this->containsAny($normalized, [
+            'paling efektif',
+            'terbaik',
+            'top engineer',
+            'most effective',
+            'paling bagus',
+            'paling produktif',
+            'paling banyak close',
+            'close ticket terbanyak',
+            'closed ticket terbanyak',
+            'paling banyak selesai',
+            'workload tertinggi',
+            'beban kerja tertinggi',
+            'paling sibuk',
+            'sla terbaik',
+            'compliance terbaik',
+        ]);
+    }
+
+    private function isAssetInsightIntent(string $normalized): bool
+    {
+        return $this->containsAny($normalized, [
+            'asset',
+            'aset',
+            'asset status',
+            'status asset',
+            'asset location',
+            'lokasi asset',
+        ]);
     }
 
     private function extractTicketNumber(string $message): ?string
@@ -371,5 +746,32 @@ class AssistantService
         }
 
         return null;
+    }
+
+    private function resolveAssistantPeriod(string $normalized, string $default = 'today'): array
+    {
+        $now = CarbonImmutable::now();
+
+        if ($this->containsAny($normalized, ['hari ini', 'today'])) {
+            return [$now->startOfDay(), $now->endOfDay(), 'hari ini'];
+        }
+
+        if ($this->containsAny($normalized, ['minggu ini', 'this week'])) {
+            return [$now->startOfWeek(), $now->endOfWeek(), 'minggu ini'];
+        }
+
+        if ($this->containsAny($normalized, ['bulan ini', 'this month'])) {
+            return [$now->startOfMonth(), $now->endOfMonth(), 'bulan ini'];
+        }
+
+        if ($default === 'month') {
+            return [$now->startOfMonth(), $now->endOfMonth(), 'bulan ini'];
+        }
+
+        if ($default === 'week') {
+            return [$now->startOfWeek(), $now->endOfWeek(), 'minggu ini'];
+        }
+
+        return [$now->startOfDay(), $now->endOfDay(), 'hari ini'];
     }
 }

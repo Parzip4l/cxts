@@ -20,7 +20,8 @@
             'Completion Rate: ' . number_format($current['derived']['completion_rate'], 2) . '%',
             'Response SLA: ' . number_format($current['sla']['response']['compliance_rate'], 2) . '%',
             'Resolution SLA: ' . number_format($current['sla']['resolution']['compliance_rate'], 2) . '%',
-            'MTTR: ' . ($current['summary']['mttr_minutes'] !== null ? number_format($current['summary']['mttr_minutes'], 2) . ' menit' : '-'),
+            'MTTR Final Cycle: ' . ($current['summary']['mttr_minutes'] !== null ? number_format($current['summary']['mttr_minutes'], 2) . ' menit' : '-'),
+            'Reopen Rate: ' . number_format($current['summary']['reopen_rate'] ?? 0, 2) . '%',
             'Engineer Effectiveness: ' . number_format($current['engineer']['avg_effectiveness_score'], 2),
         ])->merge(
             $actionPlan->take(3)->map(fn ($action, $index) => 'Action ' . ($index + 1) . ': [' . $action['priority'] . '] ' . $action['title'] . ' - ' . $action['owner'])
@@ -89,10 +90,17 @@
                 'higher_is_better' => true,
             ],
             [
-                'label' => 'MTTR',
+                'label' => 'MTTR Final Cycle',
                 'current' => $current['summary']['mttr_minutes'],
                 'key' => 'mttr_minutes',
                 'format' => $formatDuration,
+                'higher_is_better' => false,
+            ],
+            [
+                'label' => 'Reopen Rate',
+                'current' => $current['summary']['reopen_rate'],
+                'key' => 'reopen_rate',
+                'format' => fn ($value) => number_format($value, 2) . '%',
                 'higher_is_better' => false,
             ],
             [
@@ -208,8 +216,12 @@
                                 <span class="fw-semibold">{{ number_format($current['sla']['resolution']['compliance_rate'], 2) }}%</span>
                             </div>
                             <div class="d-flex justify-content-between align-items-center">
-                                <span class="text-muted">MTTR</span>
+                                <span class="text-muted">MTTR Final Cycle</span>
                                 <span class="fw-semibold">{{ $formatDuration($current['summary']['mttr_minutes']) }}</span>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span class="text-muted">Reopen Rate</span>
+                                <span class="fw-semibold">{{ number_format($current['summary']['reopen_rate'] ?? 0, 2) }}%</span>
                             </div>
                             <div class="d-flex justify-content-between align-items-center">
                                 <span class="text-muted">Engineer Effectiveness</span>

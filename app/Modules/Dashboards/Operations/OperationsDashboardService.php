@@ -4,6 +4,7 @@ namespace App\Modules\Dashboards\Operations;
 
 use App\Models\Inspection;
 use App\Models\Ticket;
+use App\Models\TicketActivity;
 use App\Models\TicketWorklog;
 use App\Models\User;
 use Carbon\CarbonImmutable;
@@ -151,22 +152,7 @@ class OperationsDashboardService
             ->filter(fn ($minutes) => $minutes !== null)
             ->avg();
 
-        $mttrMeasuredTickets = (clone $baseQuery)
-            ->whereNotNull('tickets.started_at')
-            ->where(function (Builder $query): void {
-                $query->whereNotNull('tickets.resolved_at')
-                    ->orWhereNotNull('tickets.completed_at');
-            })
-            ->get(['tickets.started_at', 'tickets.resolved_at', 'tickets.completed_at']);
-
-        $mttrMinutes = $mttrMeasuredTickets
-            ->map(function (Ticket $ticket) {
-                $repairCompletedAt = $ticket->resolved_at ?? $ticket->completed_at;
-
-                return $ticket->started_at?->diffInMinutes($repairCompletedAt);
-            })
-            ->filter(fn ($minutes) => $minutes !== null)
-            ->avg();
+        $finalCycleMetrics = $this->finalCycleMetrics($baseQuery);
 
         return [
             'total_tickets' => $totalTickets,
@@ -182,8 +168,10 @@ class OperationsDashboardService
                 ->count(),
             'avg_response_minutes' => $avgResponseMinutes !== null ? round((float) $avgResponseMinutes, 2) : null,
             'avg_resolution_minutes' => $avgResolutionMinutes !== null ? round((float) $avgResolutionMinutes, 2) : null,
-            'mttr_minutes' => $mttrMinutes !== null ? round((float) $mttrMinutes, 2) : null,
-            'mttr_ticket_count' => $mttrMeasuredTickets->count(),
+            'mttr_minutes' => $finalCycleMetrics['mttr_minutes'],
+            'mttr_ticket_count' => $finalCycleMetrics['measured_ticket_count'],
+            'reopened_ticket_count' => $finalCycleMetrics['reopened_ticket_count'],
+            'reopen_rate' => $finalCycleMetrics['reopen_rate'],
         ];
     }
 
@@ -238,6 +226,7 @@ class OperationsDashboardService
             'response_compliance' => $this->metricDelta($current['sla']['response']['compliance_rate'], $comparison['sla']['response']['compliance_rate']),
             'resolution_compliance' => $this->metricDelta($current['sla']['resolution']['compliance_rate'], $comparison['sla']['resolution']['compliance_rate']),
             'mttr_minutes' => $this->metricDelta($current['summary']['mttr_minutes'], $comparison['summary']['mttr_minutes'], false),
+            'reopen_rate' => $this->metricDelta($current['summary']['reopen_rate'], $comparison['summary']['reopen_rate'], false),
             'avg_effectiveness_score' => $this->metricDelta($current['engineer']['avg_effectiveness_score'], $comparison['engineer']['avg_effectiveness_score']),
             'abnormal_inspections' => $this->metricDelta($current['inspection']['abnormal_inspections'], $comparison['inspection']['abnormal_inspections'], false),
             'overdue_resolution_tickets' => $this->metricDelta($current['summary']['overdue_resolution_tickets'], $comparison['summary']['overdue_resolution_tickets'], false),
@@ -320,6 +309,16 @@ class OperationsDashboardService
                 'owner' => 'Ops Admin / Supervisor',
                 'timeframe' => 'Minggu ini',
                 'message' => 'Ada indikasi penurunan ketepatan penyelesaian. Prioritaskan clearance pada ticket overdue, evaluasi bottleneck approval/assignment, dan siapkan jalur eskalasi untuk kasus yang paling lama terbuka.',
+            ];
+        }
+
+        if (($current['summary']['reopen_rate'] ?? 0) >= 10 || (($delta['reopen_rate']['impact'] ?? 0) < 0)) {
+            $actions[] = [
+                'priority' => 'High',
+                'title' => 'Tekan reopen dan perkuat first-time fix',
+                'owner' => 'Operations Lead / Engineering Supervisor',
+                'timeframe' => 'Minggu ini',
+                'message' => 'Reopen rate menunjukkan adanya rework setelah ticket dinyatakan selesai. Review kualitas handoff, validasi hasil sebelum close, dan akar masalah ticket yang paling sering dibuka kembali.',
             ];
         }
 
@@ -441,6 +440,19 @@ class OperationsDashboardService
             ];
         }
 
+        if (($current['summary']['reopen_rate'] ?? 0) >= 10) {
+            $risks[] = [
+                'severity' => 'Medium',
+                'title' => 'Reopen rate menandakan adanya rework',
+                'message' => sprintf(
+                    'Reopen rate saat ini %s%% (%s dari %s ticket final cycle). Ini menunjukkan sebagian pekerjaan perlu dibuka kembali setelah dinyatakan selesai.',
+                    number_format($current['summary']['reopen_rate'] ?? 0, 2),
+                    number_format($current['summary']['reopened_ticket_count'] ?? 0),
+                    number_format($current['summary']['mttr_ticket_count'] ?? 0)
+                ),
+            ];
+        }
+
         if (empty($risks)) {
             $risks[] = [
                 'severity' => 'Low',
@@ -486,6 +498,14 @@ class OperationsDashboardService
                 'priority' => 'Medium',
                 'title' => 'Optimalkan distribusi workload engineer',
                 'message' => 'Penataan workload, pencocokan skill, dan quality handoff assignment berpotensi meningkatkan efektivitas engineer tanpa harus langsung menambah headcount.',
+            ];
+        }
+
+        if (($current['summary']['reopen_rate'] ?? 0) >= 10 || (($delta['reopen_rate']['impact'] ?? 0) < 0)) {
+            $areas[] = [
+                'priority' => 'Medium',
+                'title' => 'Turunkan reopen rate dan tingkatkan kualitas penyelesaian',
+                'message' => 'Reopen rate yang tinggi mengindikasikan solusi belum benar-benar tuntas saat ticket diselesaikan. Perlu checklist verifikasi hasil, root cause review, dan closure discipline yang lebih ketat.',
             ];
         }
 
@@ -622,6 +642,19 @@ class OperationsDashboardService
                     number_format($current['engineer']['avg_effectiveness_score'], 2),
                     number_format($comparisonSnapshot['derived']['completion_rate'], 2),
                     number_format($current['derived']['completion_rate'], 2)
+                ),
+            ];
+        }
+
+        $reopenDelta = $delta['reopen_rate'];
+        if ($reopenDelta['direction'] !== 'flat') {
+            $drivers[] = [
+                'title' => 'Kualitas Penyelesaian',
+                'tone' => $reopenDelta['impact'] >= 0 ? 'success' : 'warning',
+                'message' => sprintf(
+                    'Reopen rate berubah dari %s%% menjadi %s%%. Ini membantu membaca apakah MTTR final cycle didorong oleh penyelesaian yang stabil atau oleh ticket yang harus dibuka kembali.',
+                    number_format($comparisonSnapshot['summary']['reopen_rate'] ?? 0, 2),
+                    number_format($current['summary']['reopen_rate'] ?? 0, 2)
                 ),
             ];
         }
@@ -1409,5 +1442,87 @@ class OperationsDashboardService
         }
 
         return round(($numerator / $denominator) * 100, 2);
+    }
+
+    private function finalCycleMetrics(Builder $baseQuery): array
+    {
+        $measuredTickets = (clone $baseQuery)
+            ->where(function (Builder $query): void {
+                $query->whereNotNull('tickets.completed_at')
+                    ->orWhereNotNull('tickets.closed_at');
+            })
+            ->pluck('tickets.id');
+
+        if ($measuredTickets->isEmpty()) {
+            return [
+                'mttr_minutes' => null,
+                'measured_ticket_count' => 0,
+                'reopened_ticket_count' => 0,
+                'reopen_rate' => 0.0,
+            ];
+        }
+
+        $activitiesByTicket = TicketActivity::query()
+            ->whereIn('ticket_id', $measuredTickets->all())
+            ->whereIn('activity_type', ['work_started', 'work_completed', 'ticket_reopened'])
+            ->orderBy('created_at')
+            ->get(['ticket_id', 'activity_type', 'created_at'])
+            ->groupBy('ticket_id');
+
+        $durations = [];
+        $reopenedTicketCount = 0;
+
+        foreach ($measuredTickets as $ticketId) {
+            $activities = $activitiesByTicket->get($ticketId, collect());
+            $lastCompleted = $activities->last(fn (TicketActivity $activity) => $activity->activity_type === 'work_completed');
+
+            if (! $lastCompleted instanceof TicketActivity || $lastCompleted->created_at === null) {
+                continue;
+            }
+
+            $lastReopenedBeforeCompletion = $activities
+                ->filter(fn (TicketActivity $activity) => $activity->activity_type === 'ticket_reopened'
+                    && $activity->created_at !== null
+                    && $activity->created_at->lt($lastCompleted->created_at))
+                ->last();
+
+            $finalCycleStart = $activities
+                ->filter(function (TicketActivity $activity) use ($lastCompleted, $lastReopenedBeforeCompletion): bool {
+                    if ($activity->activity_type !== 'work_started' || $activity->created_at === null) {
+                        return false;
+                    }
+
+                    if ($activity->created_at->gte($lastCompleted->created_at)) {
+                        return false;
+                    }
+
+                    if ($lastReopenedBeforeCompletion instanceof TicketActivity && $lastReopenedBeforeCompletion->created_at !== null) {
+                        return $activity->created_at->gt($lastReopenedBeforeCompletion->created_at);
+                    }
+
+                    return true;
+                })
+                ->last();
+
+            if (! $finalCycleStart instanceof TicketActivity || $finalCycleStart->created_at === null) {
+                continue;
+            }
+
+            if ($activities->contains(fn (TicketActivity $activity) => $activity->activity_type === 'ticket_reopened')) {
+                $reopenedTicketCount++;
+            }
+
+            $durations[] = $finalCycleStart->created_at->diffInMinutes($lastCompleted->created_at);
+        }
+
+        $measuredTicketCount = count($durations);
+        $mttrMinutes = $measuredTicketCount > 0 ? round(collect($durations)->avg(), 2) : null;
+
+        return [
+            'mttr_minutes' => $mttrMinutes,
+            'measured_ticket_count' => $measuredTicketCount,
+            'reopened_ticket_count' => $reopenedTicketCount,
+            'reopen_rate' => $measuredTicketCount > 0 ? $this->percentage($reopenedTicketCount, $measuredTicketCount) : 0.0,
+        ];
     }
 }
