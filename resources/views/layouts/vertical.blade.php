@@ -3,6 +3,7 @@
 
 <head>
     @include('layouts.partials/title-meta')
+    <meta name="csrf-token" content="{{ csrf_token() }}">
 
     @include('layouts.partials/head-css')
 </head>
@@ -27,6 +28,10 @@
         </div>
 
     </div>
+
+    @auth
+        @include('layouts.partials.floating-assistant')
+    @endauth
 
     @include('layouts.partials/vendor-scripts')
 

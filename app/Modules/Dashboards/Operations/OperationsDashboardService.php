@@ -151,6 +151,23 @@ class OperationsDashboardService
             ->filter(fn ($minutes) => $minutes !== null)
             ->avg();
 
+        $mttrMeasuredTickets = (clone $baseQuery)
+            ->whereNotNull('tickets.started_at')
+            ->where(function (Builder $query): void {
+                $query->whereNotNull('tickets.resolved_at')
+                    ->orWhereNotNull('tickets.completed_at');
+            })
+            ->get(['tickets.started_at', 'tickets.resolved_at', 'tickets.completed_at']);
+
+        $mttrMinutes = $mttrMeasuredTickets
+            ->map(function (Ticket $ticket) {
+                $repairCompletedAt = $ticket->resolved_at ?? $ticket->completed_at;
+
+                return $ticket->started_at?->diffInMinutes($repairCompletedAt);
+            })
+            ->filter(fn ($minutes) => $minutes !== null)
+            ->avg();
+
         return [
             'total_tickets' => $totalTickets,
             'open_tickets' => $openTickets,
@@ -165,6 +182,8 @@ class OperationsDashboardService
                 ->count(),
             'avg_response_minutes' => $avgResponseMinutes !== null ? round((float) $avgResponseMinutes, 2) : null,
             'avg_resolution_minutes' => $avgResolutionMinutes !== null ? round((float) $avgResolutionMinutes, 2) : null,
+            'mttr_minutes' => $mttrMinutes !== null ? round((float) $mttrMinutes, 2) : null,
+            'mttr_ticket_count' => $mttrMeasuredTickets->count(),
         ];
     }
 
@@ -218,6 +237,7 @@ class OperationsDashboardService
             'completion_rate' => $this->metricDelta($current['derived']['completion_rate'], $comparison['derived']['completion_rate']),
             'response_compliance' => $this->metricDelta($current['sla']['response']['compliance_rate'], $comparison['sla']['response']['compliance_rate']),
             'resolution_compliance' => $this->metricDelta($current['sla']['resolution']['compliance_rate'], $comparison['sla']['resolution']['compliance_rate']),
+            'mttr_minutes' => $this->metricDelta($current['summary']['mttr_minutes'], $comparison['summary']['mttr_minutes'], false),
             'avg_effectiveness_score' => $this->metricDelta($current['engineer']['avg_effectiveness_score'], $comparison['engineer']['avg_effectiveness_score']),
             'abnormal_inspections' => $this->metricDelta($current['inspection']['abnormal_inspections'], $comparison['inspection']['abnormal_inspections'], false),
             'overdue_resolution_tickets' => $this->metricDelta($current['summary']['overdue_resolution_tickets'], $comparison['summary']['overdue_resolution_tickets'], false),

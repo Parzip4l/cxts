@@ -384,10 +384,183 @@ class SearchableSelects {
     }
 }
 
+class FloatingAssistant {
+    init() {
+        this.root = document.getElementById('cxts-floating-assistant');
+        if (!this.root) {
+            return;
+        }
+
+        this.endpoint = this.root.dataset.endpoint || '';
+        this.panel = this.root.querySelector('.cxts-assistant__panel');
+        this.messages = this.root.querySelector('[data-assistant-messages]');
+        this.form = this.root.querySelector('[data-assistant-form]');
+        this.input = this.root.querySelector('.cxts-assistant__input');
+        this.toggleButton = this.root.querySelector('[data-assistant-toggle]');
+        this.closeButton = this.root.querySelector('[data-assistant-close]');
+        this.suggestionsContainer = this.root.querySelector('[data-assistant-suggestions]');
+        this.csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+
+        this.bindEvents();
+    }
+
+    bindEvents() {
+        this.toggleButton?.addEventListener('click', () => {
+            this.open();
+        });
+
+        this.closeButton?.addEventListener('click', () => {
+            this.close();
+        });
+
+        this.form?.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const message = (this.input?.value || '').trim();
+            if (!message) {
+                return;
+            }
+
+            this.pushMessage('user', message);
+            this.input.value = '';
+            this.setBusy(true);
+            this.pushTypingIndicator();
+
+            try {
+                const response = await fetch(this.endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': this.csrfToken,
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json',
+                    },
+                    body: JSON.stringify({ message }),
+                });
+
+                this.removeTypingIndicator();
+
+                const payload = await response.json();
+                this.pushMessage('assistant', payload?.message || 'Maaf, saya belum bisa memproses pertanyaan itu.');
+                this.replaceSuggestions(payload?.suggestions || []);
+            } catch (_error) {
+                this.removeTypingIndicator();
+                this.pushMessage('assistant', 'Assistant gagal merespons saat ini. Coba lagi sebentar.');
+            } finally {
+                this.setBusy(false);
+            }
+        });
+
+        this.suggestionsContainer?.addEventListener('click', (event) => {
+            const button = event.target.closest('[data-assistant-suggestion]');
+            if (!button) {
+                return;
+            }
+
+            const suggestion = button.getAttribute('data-assistant-suggestion') || '';
+            if (this.input) {
+                this.input.value = suggestion;
+                this.input.focus();
+            }
+        });
+    }
+
+    open() {
+        if (!this.panel) {
+            return;
+        }
+
+        this.panel.hidden = false;
+        if (this.toggleButton) {
+            this.toggleButton.hidden = true;
+        }
+        this.input?.focus();
+    }
+
+    close() {
+        if (!this.panel) {
+            return;
+        }
+
+        this.panel.hidden = true;
+        if (this.toggleButton) {
+            this.toggleButton.hidden = false;
+        }
+    }
+
+    setBusy(isBusy) {
+        if (this.input) {
+            this.input.disabled = isBusy;
+        }
+
+        const submitButton = this.form?.querySelector('button[type="submit"]');
+        if (submitButton instanceof HTMLButtonElement) {
+            submitButton.disabled = isBusy;
+        }
+    }
+
+    pushMessage(type, content) {
+        if (!this.messages) {
+            return;
+        }
+
+        const message = document.createElement('div');
+        message.className = `cxts-assistant__message cxts-assistant__message--${type}`;
+        message.textContent = content;
+        this.messages.appendChild(message);
+        this.messages.scrollTop = this.messages.scrollHeight;
+    }
+
+    pushTypingIndicator() {
+        if (!this.messages) {
+            return;
+        }
+
+        this.removeTypingIndicator();
+
+        const typing = document.createElement('div');
+        typing.className = 'cxts-assistant__message cxts-assistant__message--typing';
+        typing.setAttribute('data-assistant-typing', 'true');
+        typing.innerHTML = `
+            <span class="cxts-assistant__typing-dot"></span>
+            <span class="cxts-assistant__typing-dot"></span>
+            <span class="cxts-assistant__typing-dot"></span>
+        `;
+
+        this.messages.appendChild(typing);
+        this.messages.scrollTop = this.messages.scrollHeight;
+    }
+
+    removeTypingIndicator() {
+        if (!this.messages) {
+            return;
+        }
+
+        this.messages.querySelector('[data-assistant-typing="true"]')?.remove();
+    }
+
+    replaceSuggestions(suggestions) {
+        if (!this.suggestionsContainer || !Array.isArray(suggestions)) {
+            return;
+        }
+
+        this.suggestionsContainer.innerHTML = '';
+
+        suggestions.slice(0, 3).forEach((suggestion) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'cxts-assistant__chip';
+            button.setAttribute('data-assistant-suggestion', suggestion);
+            button.textContent = suggestion;
+            this.suggestionsContainer.appendChild(button);
+        });
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function (e) {
     new Components().init();
     new FormValidation().init();
     new SearchableSelects().init();
+    new FloatingAssistant().init();
 });
 
 

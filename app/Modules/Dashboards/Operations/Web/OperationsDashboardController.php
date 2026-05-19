@@ -114,6 +114,7 @@ class OperationsDashboardController extends Controller
             fputcsv($handle, ['Completion Rate', $current['derived']['completion_rate'] . '%']);
             fputcsv($handle, ['Response SLA', $current['sla']['response']['compliance_rate'] . '%']);
             fputcsv($handle, ['Resolution SLA', $current['sla']['resolution']['compliance_rate'] . '%']);
+            fputcsv($handle, ['MTTR (Minutes)', $current['summary']['mttr_minutes']]);
             fputcsv($handle, ['Engineer Effectiveness', $current['engineer']['avg_effectiveness_score']]);
             fputcsv($handle, ['Abnormal Inspections', $current['inspection']['abnormal_inspections']]);
 

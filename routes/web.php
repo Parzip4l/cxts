@@ -3,6 +3,7 @@
 use App\Http\Controllers\RoutingController;
 use App\Modules\Dashboards\Operations\Web\OperationsDashboardController;
 use App\Modules\AuditTrail\Web\AuditTrailController;
+use App\Modules\Assistant\Web\AssistantController;
 use App\Modules\Engineering\Web\EngineeringController;
 use App\Modules\MasterData\AssetCategories\Web\AssetCategoryController;
 use App\Modules\MasterData\AssetLocations\Web\AssetLocationController;
@@ -56,6 +57,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function (): void {
         ->middleware('permission:dashboard.view_own_performance');
     Route::get('engineering', [EngineeringController::class, 'index'])->name('engineering.index');
     Route::get('manual-guide', [ManualGuideController::class, 'index'])->name('manual-guide.index');
+    Route::post('assistant/respond', [AssistantController::class, 'respond'])->name('assistant.respond');
     Route::get('users/{user}/profile-photo', [MasterUserController::class, 'profilePhoto'])->name('users.profile-photo');
     Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.center');
     Route::post('notifications/read-all', [NotificationController::class, 'markAllRead'])->name('notifications.read-all');

@@ -152,6 +152,8 @@ class DashboardApiTest extends TestCase
             ->getJson('/api/v1/dashboard/overview'.$query)
             ->assertOk()
             ->assertJsonPath('summary.total_tickets', 4)
+            ->assertJsonPath('summary.mttr_minutes', 115)
+            ->assertJsonPath('summary.mttr_ticket_count', 2)
             ->assertJsonPath('sla.response.breached', 2)
             ->assertJsonPath('sla.resolution.breached', 1);
 

@@ -54,6 +54,26 @@
         };
         $responseTone = $complianceTone($responseCompliance);
         $resolutionTone = $complianceTone($resolutionCompliance);
+        $mttrMinutes = $ticketSummary['mttr_minutes'];
+        $formatDuration = function ($minutes) {
+            if ($minutes === null) {
+                return '-';
+            }
+
+            $totalMinutes = (int) round((float) $minutes);
+            $hours = intdiv($totalMinutes, 60);
+            $remainingMinutes = $totalMinutes % 60;
+
+            if ($hours <= 0) {
+                return $remainingMinutes . ' min';
+            }
+
+            if ($remainingMinutes === 0) {
+                return $hours . ' jam';
+            }
+
+            return $hours . ' jam ' . $remainingMinutes . ' min';
+        };
     ?>
 
     <div class="card border-0 shadow-sm mb-4">
@@ -146,20 +166,20 @@
                 <div class="card-body p-4">
                     <div class="d-flex justify-content-between align-items-start mb-4">
                         <div>
-                            <div class="text-muted small text-uppercase fw-semibold mb-2">Inspections Submitted</div>
-                            <h3 class="mb-1"><?php echo e(number_format($inspectionSummary['submitted_inspections'])); ?></h3>
-                            <div class="small text-muted">Normal findings: <?php echo e(number_format($inspectionSummary['normal_inspections'])); ?></div>
+                            <div class="text-muted small text-uppercase fw-semibold mb-2">MTTR</div>
+                            <h3 class="mb-1"><?php echo e($formatDuration($mttrMinutes)); ?></h3>
+                            <div class="small text-muted">Measured tickets: <?php echo e(number_format($ticketSummary['mttr_ticket_count'])); ?></div>
                         </div>
                         <span class="avatar-md bg-info bg-opacity-10 rounded-circle d-flex align-items-center justify-content-center dashboard-icon-shell">
-                            <iconify-icon icon="solar:clipboard-check-outline" class="fs-28 text-info"></iconify-icon>
+                            <iconify-icon icon="solar:restart-outline" class="fs-28 text-info"></iconify-icon>
                         </span>
                     </div>
                     <div class="d-flex justify-content-between align-items-center mb-2">
-                        <span class="badge bg-primary-subtle text-primary">Normality Rate</span>
-                        <span class="small text-muted"><?php echo e(number_format($inspectionNormalityRate, 0)); ?>%</span>
+                        <span class="badge bg-primary-subtle text-primary">Repair Speed</span>
+                        <span class="small text-muted"><?php echo e($mttrMinutes !== null ? number_format($mttrMinutes, 2) . ' min' : 'No data'); ?></span>
                     </div>
                     <div class="progress bg-light" style="height: 10px;">
-                        <div class="progress-bar bg-primary" style="width: <?php echo e(max(0, min(100, $inspectionNormalityRate))); ?>%"></div>
+                        <div class="progress-bar bg-primary" style="width: <?php echo e($mttrMinutes !== null ? max(8, min(100, 100 - min(95, $mttrMinutes / 6))) : 8); ?>%"></div>
                     </div>
                 </div>
             </div>
@@ -278,6 +298,13 @@
                                 <div class="text-muted text-uppercase fw-semibold small mb-2">Inspection Watch</div>
                                 <h4 class="mb-1"><?php echo e(number_format($inspectionSummary['abnormal_inspections'])); ?></h4>
                                 <div class="small text-muted">Temuan abnormal dari <?php echo e(number_format($inspectionSummary['submitted_inspections'])); ?> inspection submitted.</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="dashboard-mini-panel rounded-3 p-3 h-100">
+                                <div class="text-muted text-uppercase fw-semibold small mb-2">MTTR</div>
+                                <h4 class="mb-1"><?php echo e($formatDuration($mttrMinutes)); ?></h4>
+                                <div class="small text-muted">Rata-rata waktu dari mulai pengerjaan sampai ticket resolved/completed.</div>
                             </div>
                         </div>
                         <div class="col-md-6">

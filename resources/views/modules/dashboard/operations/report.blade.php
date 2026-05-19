@@ -20,6 +20,7 @@
             'Completion Rate: ' . number_format($current['derived']['completion_rate'], 2) . '%',
             'Response SLA: ' . number_format($current['sla']['response']['compliance_rate'], 2) . '%',
             'Resolution SLA: ' . number_format($current['sla']['resolution']['compliance_rate'], 2) . '%',
+            'MTTR: ' . ($current['summary']['mttr_minutes'] !== null ? number_format($current['summary']['mttr_minutes'], 2) . ' menit' : '-'),
             'Engineer Effectiveness: ' . number_format($current['engineer']['avg_effectiveness_score'], 2),
         ])->merge(
             $actionPlan->take(3)->map(fn ($action, $index) => 'Action ' . ($index + 1) . ': [' . $action['priority'] . '] ' . $action['title'] . ' - ' . $action['owner'])
@@ -50,6 +51,13 @@
             'down' => 'solar:arrow-down-outline',
             default => 'solar:minus-outline',
         };
+        $formatDuration = function ($minutes) {
+            if ($minutes === null) {
+                return '-';
+            }
+
+            return number_format((float) $minutes, 2) . ' min';
+        };
 
         $metrics = [
             [
@@ -79,6 +87,13 @@
                 'key' => 'resolution_compliance',
                 'format' => fn ($value) => number_format($value, 2) . '%',
                 'higher_is_better' => true,
+            ],
+            [
+                'label' => 'MTTR',
+                'current' => $current['summary']['mttr_minutes'],
+                'key' => 'mttr_minutes',
+                'format' => $formatDuration,
+                'higher_is_better' => false,
             ],
             [
                 'label' => 'Engineer Effectiveness',
@@ -191,6 +206,10 @@
                             <div class="d-flex justify-content-between align-items-center">
                                 <span class="text-muted">Resolution SLA</span>
                                 <span class="fw-semibold">{{ number_format($current['sla']['resolution']['compliance_rate'], 2) }}%</span>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span class="text-muted">MTTR</span>
+                                <span class="fw-semibold">{{ $formatDuration($current['summary']['mttr_minutes']) }}</span>
                             </div>
                             <div class="d-flex justify-content-between align-items-center">
                                 <span class="text-muted">Engineer Effectiveness</span>
