@@ -36,6 +36,7 @@
                         <th>Response (min)</th>
                         <th>Resolution (min)</th>
                         <th>Working Hours ID</th>
+                        <th>Escalation</th>
                         <th>Status</th>
                         <th class="text-end">Action</th>
                     </tr>
@@ -50,6 +51,11 @@
                             <td>{{ $slaPolicy->response_time_minutes ?? '-' }}</td>
                             <td>{{ $slaPolicy->resolution_time_minutes ?? '-' }}</td>
                             <td>{{ $slaPolicy->working_hours_id ?? '-' }}</td>
+                            <td>
+                                <div class="small">Warning: {{ $slaPolicy->escalate_on_warning ? 'Yes' : 'No' }}</div>
+                                <div class="small text-muted">Breach: {{ $slaPolicy->escalate_on_breach ? 'Yes' : 'No' }}</div>
+                                <div class="small text-muted">{{ $slaPolicy->escalation_role_code ?: '-' }}</div>
+                            </td>
                             <td>
                                 @if ($slaPolicy->is_active)
                                     <span class="badge bg-success-subtle text-success">Active</span>
@@ -71,7 +77,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="6" class="text-center text-muted py-4">No SLA policies found.</td>
+                            <td colspan="7" class="text-center text-muted py-4">No SLA policies found.</td>
                         </tr>
                     @endforelse
                 </tbody>

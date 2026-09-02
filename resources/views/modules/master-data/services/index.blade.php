@@ -31,8 +31,17 @@
                     <option value="0" @selected(($filters['is_active'] ?? null) === false)>Inactive</option>
                 </select>
             </div>
-            <div class="col-md-3 text-md-end">
+            <div class="col-md-2">
+                <select name="is_requestable" class="form-select">
+                    <option value="">All requestable</option>
+                    <option value="1" @selected(($filters['is_requestable'] ?? null) === true)>Requestable</option>
+                    <option value="0" @selected(($filters['is_requestable'] ?? null) === false)>Internal only</option>
+                </select>
+            </div>
+            <div class="col-md-1 text-md-end">
                 <button class="btn btn-outline-secondary" type="submit">Filter</button>
+            </div>
+            <div class="col-md-12 text-md-end">
                 <a href="{{ route('master-data.services.index') }}" class="btn btn-outline-light">Reset</a>
                 <a href="{{ route('master-data.services.create') }}" class="btn btn-primary">Add Service</a>
             </div>
@@ -48,6 +57,9 @@
                         <th>Ownership</th>
                         <th>Owner Department</th>
                         <th>Vendor</th>
+                        <th>Request</th>
+                        <th>Fulfillment</th>
+                        <th>Tickets</th>
                         <th>Status</th>
                         <th class="text-end">Action</th>
                     </tr>
@@ -61,6 +73,15 @@
                             <td><span class="badge bg-info-subtle text-info">{{ ucfirst($service->ownership_model) }}</span></td>
                             <td>{{ $service->ownerDepartment?->name ?? '-' }}</td>
                             <td>{{ $service->vendor?->name ?? '-' }}</td>
+                            <td>
+                                @if ($service->is_requestable)
+                                    <span class="badge bg-primary-subtle text-primary">Requestable</span>
+                                @else
+                                    <span class="badge bg-secondary-subtle text-secondary">Internal only</span>
+                                @endif
+                            </td>
+                            <td>{{ $service->fulfillment_team_name ?? '-' }}</td>
+                            <td>{{ number_format((int) ($service->tickets_count ?? 0)) }}</td>
                             <td>
                                 @if ($service->is_active)
                                     <span class="badge bg-success-subtle text-success">Active</span>
@@ -82,7 +103,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="8" class="text-center text-muted py-4">No service catalog found.</td>
+                            <td colspan="11" class="text-center text-muted py-4">No service catalog found.</td>
                         </tr>
                     @endforelse
                 </tbody>

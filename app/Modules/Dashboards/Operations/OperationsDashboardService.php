@@ -3,6 +3,8 @@
 namespace App\Modules\Dashboards\Operations;
 
 use App\Models\Inspection;
+use App\Models\MonitoringEvent;
+use App\Models\SlaEvent;
 use App\Models\Ticket;
 use App\Models\TicketActivity;
 use App\Models\TicketWorklog;
@@ -24,6 +26,10 @@ class OperationsDashboardService
             'sla' => $this->slaSummary($actor, $from, $to, $filters),
             'inspection_summary' => $this->inspectionSummary($actor, $from, $to),
             'daily_trend' => $this->ticketDailyTrend($actor, $from, $to, $filters),
+            'incident_trend' => $this->incidentTrend($actor, $from, $to, $filters),
+            'request_fulfillment' => $this->requestFulfillment($actor, $from, $to, $filters),
+            'upcoming_changes' => $this->upcomingChanges($actor, $from, $to, $filters),
+            'event_summary' => $this->eventSummary($from, $to, $filters),
             'top_engineers' => $this->engineerStats($actor, $from, $to, $filters, 5)->values()->all(),
             'report_structure' => $this->reportStructure($actor, $from, $to, $filters, 10),
         ];
@@ -38,6 +44,7 @@ class OperationsDashboardService
             'summary' => $this->slaSummary($actor, $from, $to, $filters),
             'breach_tickets' => $this->breachTickets($actor, $from, $to, $filters),
             'daily_breach_trend' => $this->slaBreachTrend($actor, $from, $to, $filters),
+            'event_summary' => $this->slaEventSummary($actor, $from, $to, $filters),
         ];
     }
 
@@ -1230,6 +1237,48 @@ class OperationsDashboardService
         return $query;
     }
 
+    private function slaEventSummary(?User $actor, CarbonImmutable $from, CarbonImmutable $to, array $filters = []): array
+    {
+        $query = SlaEvent::query()
+            ->whereBetween('event_at', [$from->startOfDay(), $to->endOfDay()]);
+
+        $query->whereHas('ticket', function (Builder $ticketQuery) use ($actor, $filters): void {
+            $this->applyTicketAccessScope($ticketQuery, $actor);
+
+            foreach (['ticket_category_id', 'ticket_subcategory_id', 'ticket_detail_subcategory_id', 'expected_approver_id', 'expected_approver_role_code', 'approval_status', 'process_type'] as $filterKey) {
+                if (($filters[$filterKey] ?? null) !== null && $filters[$filterKey] !== '') {
+                    $ticketQuery->where('tickets.'.$filterKey, $filters[$filterKey]);
+                }
+            }
+        });
+
+        $byType = (clone $query)
+            ->selectRaw('event_type, COUNT(*) as total_events')
+            ->groupBy('event_type')
+            ->pluck('total_events', 'event_type');
+
+        $byTarget = (clone $query)
+            ->selectRaw('target, COUNT(*) as total_events')
+            ->groupBy('target')
+            ->orderByDesc('total_events')
+            ->limit(5)
+            ->get()
+            ->map(fn (object $row): array => [
+                'target' => $row->target ?? 'overall',
+                'total_events' => (int) $row->total_events,
+            ])
+            ->all();
+
+        return [
+            'total_events' => (clone $query)->count(),
+            'warning_events' => (int) ($byType[SlaEvent::TYPE_WARNING] ?? 0),
+            'breach_events' => (int) ($byType[SlaEvent::TYPE_BREACH] ?? 0),
+            'escalation_events' => (int) ($byType[SlaEvent::TYPE_ESCALATION] ?? 0),
+            'state_change_events' => (int) ($byType[SlaEvent::TYPE_STATE_CHANGED] ?? 0),
+            'top_targets' => $byTarget,
+        ];
+    }
+
     private function reportStructure(?User $actor, CarbonImmutable $from, CarbonImmutable $to, array $filters = [], int $limit = 10): array
     {
         $baseQuery = $this->ticketBaseQuery($actor, $from, $to, $filters);
@@ -1326,6 +1375,327 @@ class OperationsDashboardService
         ];
     }
 
+    private function incidentTrend(?User $actor, CarbonImmutable $from, CarbonImmutable $to, array $filters = [], int $limit = 5): array
+    {
+        $now = CarbonImmutable::now();
+        $incidentFilters = [
+            ...$filters,
+            'process_type' => Ticket::PROCESS_TYPE_INCIDENT,
+        ];
+        $baseQuery = $this->ticketBaseQuery($actor, $from, $to, $incidentFilters);
+
+        $topCategories = (clone $baseQuery)
+            ->leftJoin('ticket_categories', 'tickets.ticket_category_id', '=', 'ticket_categories.id')
+            ->selectRaw(
+                'tickets.ticket_category_id,
+                ticket_categories.name as category_name,
+                COUNT(*) as total_tickets,
+                SUM(CASE WHEN tickets.completed_at IS NULL THEN 1 ELSE 0 END) as open_tickets'
+            )
+            ->groupBy('tickets.ticket_category_id', 'ticket_categories.name')
+            ->orderByDesc('total_tickets')
+            ->limit($limit)
+            ->get()
+            ->map(fn (object $row): array => [
+                'id' => $row->ticket_category_id ? (int) $row->ticket_category_id : null,
+                'name' => $row->category_name ?? 'Unclassified Category',
+                'total_tickets' => (int) $row->total_tickets,
+                'open_tickets' => (int) $row->open_tickets,
+            ])
+            ->all();
+
+        $topServices = (clone $baseQuery)
+            ->leftJoin('services', 'tickets.service_id', '=', 'services.id')
+            ->selectRaw(
+                'tickets.service_id,
+                services.name as service_name,
+                COUNT(*) as total_tickets,
+                SUM(CASE WHEN tickets.completed_at IS NULL THEN 1 ELSE 0 END) as open_tickets'
+            )
+            ->groupBy('tickets.service_id', 'services.name')
+            ->orderByDesc('total_tickets')
+            ->limit($limit)
+            ->get()
+            ->map(fn (object $row): array => [
+                'id' => $row->service_id ? (int) $row->service_id : null,
+                'name' => $row->service_name ?? 'No Related Service',
+                'total_tickets' => (int) $row->total_tickets,
+                'open_tickets' => (int) $row->open_tickets,
+            ])
+            ->all();
+
+        $topAssets = (clone $baseQuery)
+            ->leftJoin('assets', 'tickets.asset_id', '=', 'assets.id')
+            ->selectRaw(
+                'tickets.asset_id,
+                assets.name as asset_name,
+                COUNT(*) as total_tickets,
+                SUM(CASE WHEN tickets.completed_at IS NULL THEN 1 ELSE 0 END) as open_tickets'
+            )
+            ->groupBy('tickets.asset_id', 'assets.name')
+            ->orderByDesc('total_tickets')
+            ->limit($limit)
+            ->get()
+            ->map(fn (object $row): array => [
+                'id' => $row->asset_id ? (int) $row->asset_id : null,
+                'name' => $row->asset_name ?? 'No Related Asset',
+                'total_tickets' => (int) $row->total_tickets,
+                'open_tickets' => (int) $row->open_tickets,
+            ])
+            ->all();
+
+        $repeatGroups = (clone $baseQuery)
+            ->leftJoin('ticket_categories', 'tickets.ticket_category_id', '=', 'ticket_categories.id')
+            ->leftJoin('ticket_subcategories', 'tickets.ticket_subcategory_id', '=', 'ticket_subcategories.id')
+            ->leftJoin('ticket_detail_subcategories', 'tickets.ticket_detail_subcategory_id', '=', 'ticket_detail_subcategories.id')
+            ->selectRaw(
+                'tickets.ticket_category_id,
+                ticket_categories.name as category_name,
+                tickets.ticket_subcategory_id,
+                ticket_subcategories.name as subcategory_name,
+                tickets.ticket_detail_subcategory_id,
+                ticket_detail_subcategories.name as detail_name,
+                COUNT(*) as total_tickets'
+            )
+            ->groupBy(
+                'tickets.ticket_category_id',
+                'ticket_categories.name',
+                'tickets.ticket_subcategory_id',
+                'ticket_subcategories.name',
+                'tickets.ticket_detail_subcategory_id',
+                'ticket_detail_subcategories.name'
+            )
+            ->havingRaw('COUNT(*) > 1')
+            ->orderByDesc('total_tickets')
+            ->limit($limit)
+            ->get()
+            ->map(fn (object $row): array => [
+                'category_name' => $row->category_name ?? 'Unclassified Category',
+                'subcategory_name' => $row->subcategory_name ?? 'Unclassified Subcategory',
+                'detail_name' => $row->detail_name ?? 'Unclassified Detail',
+                'total_tickets' => (int) $row->total_tickets,
+            ])
+            ->all();
+
+        return [
+            'total_incidents' => (clone $baseQuery)->count(),
+            'major_incidents' => (clone $baseQuery)->where('tickets.is_major_incident', true)->count(),
+            'breached_incidents' => (clone $baseQuery)
+                ->where(function (Builder $query) use ($now): void {
+                    $query->whereNotNull('tickets.breached_response_at')
+                        ->orWhereNotNull('tickets.breached_resolution_at')
+                        ->orWhere(function (Builder $lateResponse): void {
+                            $lateResponse->whereNotNull('tickets.response_due_at')
+                                ->where(function (Builder $responseActual): void {
+                                    $responseActual->whereColumn('tickets.responded_at', '>', 'tickets.response_due_at')
+                                        ->orWhere(function (Builder $startedLate): void {
+                                            $startedLate->whereNull('tickets.responded_at')
+                                                ->whereColumn('tickets.started_at', '>', 'tickets.response_due_at');
+                                        });
+                                });
+                        })
+                        ->orWhere(function (Builder $pendingResponse) use ($now): void {
+                            $pendingResponse->whereNull('tickets.responded_at')
+                                ->whereNull('tickets.started_at')
+                                ->whereNull('tickets.completed_at')
+                                ->whereNull('tickets.closed_at')
+                                ->whereNotNull('tickets.response_due_at')
+                                ->where('tickets.response_due_at', '<', $now);
+                        })
+                        ->orWhere(function (Builder $lateResolution): void {
+                            $lateResolution->whereNotNull('tickets.resolution_due_at')
+                                ->whereColumn('tickets.completed_at', '>', 'tickets.resolution_due_at');
+                        })
+                        ->orWhere(function (Builder $pendingResolution) use ($now): void {
+                            $pendingResolution->whereNull('tickets.completed_at')
+                                ->whereNull('tickets.closed_at')
+                                ->whereNull('tickets.paused_at')
+                                ->whereNotNull('tickets.resolution_due_at')
+                                ->where('tickets.resolution_due_at', '<', $now);
+                        });
+                })
+                ->count(),
+            'reopened_incidents' => (clone $baseQuery)
+                ->whereHas('activities', fn (Builder $query) => $query->where('activity_type', 'ticket_reopened'))
+                ->count(),
+            'top_categories' => $topCategories,
+            'top_services' => $topServices,
+            'top_assets' => $topAssets,
+            'repeat_groups' => $repeatGroups,
+        ];
+    }
+
+    private function requestFulfillment(?User $actor, CarbonImmutable $from, CarbonImmutable $to, array $filters = [], int $limit = 5): array
+    {
+        $requestFilters = [
+            ...$filters,
+            'process_type' => Ticket::PROCESS_TYPE_SERVICE_REQUEST,
+        ];
+        $baseQuery = $this->ticketBaseQuery($actor, $from, $to, $requestFilters);
+
+        $stateCounts = (clone $baseQuery)
+            ->leftJoin('ticket_statuses', 'tickets.ticket_status_id', '=', 'ticket_statuses.id')
+            ->selectRaw('ticket_statuses.code as status_code, ticket_statuses.name as status_name, COUNT(*) as total_tickets')
+            ->groupBy('ticket_statuses.code', 'ticket_statuses.name')
+            ->orderByDesc('total_tickets')
+            ->get()
+            ->map(fn (object $row): array => [
+                'status_code' => $row->status_code ?? 'UNSET',
+                'status_name' => $row->status_name ?? 'No Status',
+                'label' => Ticket::serviceRequestLifecycleOptions()[$row->status_code ?? ''] ?? ($row->status_name ?? 'No Status'),
+                'total_tickets' => (int) $row->total_tickets,
+            ])
+            ->all();
+
+        $topServices = (clone $baseQuery)
+            ->leftJoin('services', 'tickets.service_id', '=', 'services.id')
+            ->selectRaw(
+                'tickets.service_id,
+                services.name as service_name,
+                COUNT(*) as total_tickets,
+                SUM(CASE WHEN tickets.completed_at IS NOT NULL THEN 1 ELSE 0 END) as fulfilled_tickets,
+                SUM(CASE WHEN tickets.approval_status = ? THEN 1 ELSE 0 END) as pending_approval_tickets',
+                [Ticket::APPROVAL_STATUS_PENDING]
+            )
+            ->groupBy('tickets.service_id', 'services.name')
+            ->orderByDesc('total_tickets')
+            ->limit($limit)
+            ->get()
+            ->map(fn (object $row): array => [
+                'id' => $row->service_id ? (int) $row->service_id : null,
+                'name' => $row->service_name ?? 'No Related Service',
+                'total_tickets' => (int) $row->total_tickets,
+                'fulfilled_tickets' => (int) $row->fulfilled_tickets,
+                'pending_approval_tickets' => (int) $row->pending_approval_tickets,
+            ])
+            ->all();
+
+        $avgApprovalMinutes = (clone $baseQuery)
+            ->whereNotNull('tickets.approval_requested_at')
+            ->whereNotNull('tickets.approved_at')
+            ->get(['tickets.approval_requested_at', 'tickets.approved_at'])
+            ->map(fn (Ticket $ticket) => $ticket->approval_requested_at?->diffInMinutes($ticket->approved_at))
+            ->filter(fn ($minutes) => $minutes !== null)
+            ->avg();
+
+        $avgCompletionMinutes = (clone $baseQuery)
+            ->whereNotNull('tickets.completed_at')
+            ->get(['tickets.created_at', 'tickets.completed_at'])
+            ->map(fn (Ticket $ticket) => $ticket->created_at?->diffInMinutes($ticket->completed_at))
+            ->filter(fn ($minutes) => $minutes !== null)
+            ->avg();
+
+        return [
+            'total_requests' => (clone $baseQuery)->count(),
+            'pending_approval_requests' => (clone $baseQuery)->where('tickets.approval_status', Ticket::APPROVAL_STATUS_PENDING)->count(),
+            'fulfilled_requests' => (clone $baseQuery)->whereNotNull('tickets.completed_at')->count(),
+            'breached_requests' => (clone $baseQuery)
+                ->where(function (Builder $query): void {
+                    $query->where('tickets.sla_status', Ticket::SLA_STATUS_BREACHED)
+                        ->orWhereNotNull('tickets.breached_response_at')
+                        ->orWhereNotNull('tickets.breached_resolution_at');
+                })
+                ->count(),
+            'avg_approval_minutes' => $avgApprovalMinutes !== null ? round((float) $avgApprovalMinutes, 2) : null,
+            'avg_completion_minutes' => $avgCompletionMinutes !== null ? round((float) $avgCompletionMinutes, 2) : null,
+            'state_counts' => $stateCounts,
+            'top_services' => $topServices,
+        ];
+    }
+
+    private function eventSummary(CarbonImmutable $from, CarbonImmutable $to, array $filters = [], int $limit = 5): array
+    {
+        $baseQuery = MonitoringEvent::query()
+            ->whereBetween('occurred_at', [$from->startOfDay(), $to->endOfDay()]);
+
+        if (($filters['service_id'] ?? null) !== null && $filters['service_id'] !== '') {
+            $baseQuery->where('service_id', $filters['service_id']);
+        }
+
+        if (($filters['asset_id'] ?? null) !== null && $filters['asset_id'] !== '') {
+            $baseQuery->where('asset_id', $filters['asset_id']);
+        }
+
+        $severityCounts = (clone $baseQuery)
+            ->selectRaw('severity, COUNT(*) as total_events')
+            ->groupBy('severity')
+            ->orderByDesc('total_events')
+            ->get()
+            ->map(fn (object $row): array => [
+                'severity' => $row->severity,
+                'label' => MonitoringEvent::severityOptions()[$row->severity] ?? $row->severity,
+                'total_events' => (int) $row->total_events,
+            ])
+            ->all();
+
+        $topSources = (clone $baseQuery)
+            ->selectRaw(
+                'source,
+                COUNT(*) as total_events,
+                SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as converted_events',
+                [MonitoringEvent::STATUS_CONVERTED]
+            )
+            ->groupBy('source')
+            ->orderByDesc('total_events')
+            ->limit($limit)
+            ->get()
+            ->map(fn (object $row): array => [
+                'source' => $row->source,
+                'total_events' => (int) $row->total_events,
+                'converted_events' => (int) $row->converted_events,
+            ])
+            ->all();
+
+        return [
+            'total_events' => (clone $baseQuery)->count(),
+            'open_events' => (clone $baseQuery)->where('status', MonitoringEvent::STATUS_OPEN)->count(),
+            'converted_events' => (clone $baseQuery)->where('status', MonitoringEvent::STATUS_CONVERTED)->count(),
+            'critical_events' => (clone $baseQuery)->where('severity', MonitoringEvent::SEVERITY_CRITICAL)->count(),
+            'high_events' => (clone $baseQuery)->where('severity', MonitoringEvent::SEVERITY_HIGH)->count(),
+            'deduplicated_events' => (clone $baseQuery)->where('duplicate_count', '>', 1)->count(),
+            'severity_counts' => $severityCounts,
+            'top_sources' => $topSources,
+        ];
+    }
+
+    private function upcomingChanges(?User $actor, CarbonImmutable $from, CarbonImmutable $to, array $filters = [], int $limit = 8): array
+    {
+        $query = Ticket::query()
+            ->with(['status:id,name,code', 'service:id,name', 'asset:id,name'])
+            ->where('tickets.process_type', Ticket::PROCESS_TYPE_CHANGE_REQUEST)
+            ->whereNotNull('tickets.change_planned_start_at')
+            ->whereBetween('tickets.change_planned_start_at', [$from->startOfDay(), $to->endOfDay()]);
+
+        $this->applyTicketAccessScope($query, $actor);
+
+        foreach (['ticket_category_id', 'ticket_subcategory_id', 'ticket_detail_subcategory_id', 'expected_approver_id', 'expected_approver_role_code', 'approval_status'] as $filterKey) {
+            if (($filters[$filterKey] ?? null) !== null && $filters[$filterKey] !== '') {
+                $query->where('tickets.'.$filterKey, $filters[$filterKey]);
+            }
+        }
+
+        return $query
+            ->orderBy('tickets.change_planned_start_at')
+            ->limit($limit)
+            ->get()
+            ->map(fn (Ticket $ticket): array => [
+                'id' => (int) $ticket->id,
+                'ticket_number' => $ticket->ticket_number,
+                'title' => $ticket->title,
+                'status_code' => $ticket->status?->code,
+                'status_name' => $ticket->status?->name,
+                'service_name' => $ticket->service?->name,
+                'asset_name' => $ticket->asset?->name,
+                'risk_level' => $ticket->change_risk_level,
+                'risk_label' => $ticket->changeRiskLabel(),
+                'planned_start_at' => $ticket->change_planned_start_at,
+                'planned_end_at' => $ticket->change_planned_end_at,
+                'review_result' => $ticket->change_review_result,
+                'review_result_label' => $ticket->changeReviewResultLabel(),
+            ])
+            ->all();
+    }
+
     private function applyTicketAccessScope(Builder $query, ?User $actor): void
     {
         if ($actor === null) {
@@ -1364,6 +1734,10 @@ class OperationsDashboardService
 
     private function applyTicketFilters(Builder $query, array $filters): void
     {
+        if (($filters['process_type'] ?? null) !== null && $filters['process_type'] !== '') {
+            $query->where('tickets.process_type', Ticket::normalizeProcessType($filters['process_type']));
+        }
+
         if (($filters['ticket_category_id'] ?? null) !== null && $filters['ticket_category_id'] !== '') {
             $query->where('tickets.ticket_category_id', $filters['ticket_category_id']);
         }

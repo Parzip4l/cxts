@@ -5,6 +5,7 @@
 
     @php
         $summary = $data['summary'];
+        $eventSummary = $data['event_summary'] ?? [];
     @endphp
 
     <div class="card">
@@ -45,6 +46,45 @@
                 <div class="card-body">
                     <p class="text-muted mb-1">Resolution Pending</p>
                     <h3 class="mb-0">{{ number_format($summary['resolution']['pending']) }}</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6 col-xl-3">
+            <div class="card">
+                <div class="card-body">
+                    <p class="text-muted mb-1">SLA Events</p>
+                    <h3 class="mb-0">{{ number_format($eventSummary['total_events'] ?? 0) }}</h3>
+                    <small class="text-muted">Warning, breach, state change, escalation</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-xl-3">
+            <div class="card">
+                <div class="card-body">
+                    <p class="text-muted mb-1">Warnings</p>
+                    <h3 class="mb-0">{{ number_format($eventSummary['warning_events'] ?? 0) }}</h3>
+                    <small class="text-muted">SLA reached 80% threshold</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-xl-3">
+            <div class="card">
+                <div class="card-body">
+                    <p class="text-muted mb-1">Breaches</p>
+                    <h3 class="mb-0">{{ number_format($eventSummary['breach_events'] ?? 0) }}</h3>
+                    <small class="text-muted">Response or resolution late</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-xl-3">
+            <div class="card">
+                <div class="card-body">
+                    <p class="text-muted mb-1">Escalations</p>
+                    <h3 class="mb-0">{{ number_format($eventSummary['escalation_events'] ?? 0) }}</h3>
+                    <small class="text-muted">Triggered by policy flag</small>
                 </div>
             </div>
         </div>

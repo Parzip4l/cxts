@@ -34,4 +34,9 @@ class Vendor extends Model
     {
         return $this->hasMany(Asset::class);
     }
+
+    public function serviceCommitments(): HasMany
+    {
+        return $this->hasMany(ServiceCommitment::class);
+    }
 }

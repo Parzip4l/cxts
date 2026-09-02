@@ -28,6 +28,10 @@ class ServiceCatalogController extends Controller
             $filters['is_active'] = (bool) $request->input('is_active');
         }
 
+        if ($request->has('is_requestable') && $request->input('is_requestable') !== '') {
+            $filters['is_requestable'] = (bool) $request->input('is_requestable');
+        }
+
         $services = $this->serviceCatalogService->paginate($filters, (int) $request->input('per_page', 15));
 
         return ServiceCatalogResource::collection($services);
@@ -40,7 +44,10 @@ class ServiceCatalogController extends Controller
 
     public function show(ServiceCatalog $service): ServiceCatalogResource
     {
-        return new ServiceCatalogResource($service->load(['ownerDepartment:id,name', 'vendor:id,name', 'manager:id,name']));
+        $service->load(['ownerDepartment:id,name', 'vendor:id,name', 'manager:id,name', 'defaultRequestSlaPolicy:id,name'])
+            ->loadCount(['assets', 'tickets']);
+
+        return new ServiceCatalogResource($service);
     }
 
     public function update(UpdateServiceCatalogRequest $request, ServiceCatalog $service): ServiceCatalogResource

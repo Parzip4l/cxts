@@ -256,10 +256,33 @@ class TicketLifecycleServiceTest extends TestCase
         $updatedTicket = app(TicketService::class)->updateDetails($ticket, [
             'title' => 'Updated title',
             'description' => 'Updated description',
+            'process_type' => Ticket::PROCESS_TYPE_CHANGE_REQUEST,
+            'incident_detection_source' => Ticket::DETECTION_SOURCE_SERVICE_DESK,
+            'is_major_incident' => true,
+            'affected_users_count' => 12,
+            'service_impact_note' => 'Finance users cannot print invoices.',
+            'incident_resolution_code' => Ticket::RESOLUTION_CODE_WORKAROUND,
+            'change_reason' => 'Preventive network upgrade.',
+            'change_risk_level' => 'low',
+            'change_planned_start_at' => '2026-09-03 20:00:00',
+            'change_planned_end_at' => '2026-09-03 21:00:00',
+            'change_rollback_plan' => 'Restore previous switch configuration.',
+            'change_affected_scope' => 'Finance floor network.',
+            'change_review_result' => 'successful',
+            'change_review_notes' => 'Completed without user impact.',
         ], $actor);
 
         $this->assertSame('Updated title', $updatedTicket->title);
         $this->assertSame('Updated description', $updatedTicket->description);
+        $this->assertSame(Ticket::DETECTION_SOURCE_SERVICE_DESK, $updatedTicket->incident_detection_source);
+        $this->assertTrue((bool) $updatedTicket->is_major_incident);
+        $this->assertSame(12, $updatedTicket->affected_users_count);
+        $this->assertSame(Ticket::RESOLUTION_CODE_WORKAROUND, $updatedTicket->incident_resolution_code);
+        $this->assertSame(Ticket::PROCESS_TYPE_CHANGE_REQUEST, $updatedTicket->process_type);
+        $this->assertSame('Preventive network upgrade.', $updatedTicket->change_reason);
+        $this->assertSame('low', $updatedTicket->change_risk_level);
+        $this->assertSame('Restore previous switch configuration.', $updatedTicket->change_rollback_plan);
+        $this->assertSame('successful', $updatedTicket->change_review_result);
         $this->assertSame($assigned->id, $updatedTicket->ticket_status_id);
 
         $this->assertDatabaseHas('ticket_activities', [

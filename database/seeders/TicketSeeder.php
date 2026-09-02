@@ -62,6 +62,7 @@ class TicketSeeder extends Seeder
             [
                 'title' => 'WiFi access point di lobby tidak bisa konek',
                 'description' => 'User tidak dapat internet dari access point lobby lantai 1 sejak pagi.',
+                'process_type' => Ticket::PROCESS_TYPE_INCIDENT,
                 'requester_id' => $requester?->id,
                 'requester_department_id' => $requester?->department_id,
                 'ticket_category_id' => $incidentCategory->id,
@@ -117,6 +118,7 @@ class TicketSeeder extends Seeder
             [
                 'title' => 'Throughput WiFi menurun signifikan di area kantor utama',
                 'description' => 'Performa internet melambat saat jam operasional, perlu pengecekan AP dan uplink switch.',
+                'process_type' => Ticket::PROCESS_TYPE_INCIDENT,
                 'requester_id' => $requester?->id,
                 'requester_department_id' => $requester?->department_id,
                 'ticket_category_id' => $incidentCategory->id,

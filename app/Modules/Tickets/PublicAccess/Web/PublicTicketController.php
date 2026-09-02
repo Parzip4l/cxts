@@ -40,10 +40,11 @@ class PublicTicketController extends Controller
             'subcategoryOptions' => TicketSubcategory::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'ticket_category_id']),
             'detailSubcategoryOptions' => TicketDetailSubcategory::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'ticket_subcategory_id']),
             'priorityOptions' => $priorityOptions,
-            'serviceOptions' => ServiceCatalog::query()->where('is_active', true)->orderBy('name')->get(['id', 'name']),
+            'serviceOptions' => ServiceCatalog::query()->where('is_active', true)->where('is_requestable', true)->orderBy('name')->get(['id', 'name', 'request_form_schema']),
             'assetOptions' => Asset::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'service_id', 'asset_location_id', 'asset_category_id']),
             'locationOptions' => AssetLocation::query()->where('is_active', true)->orderBy('name')->get(['id', 'name']),
             'defaultPriorityId' => $this->resolveDefaultPriorityId($priorityOptions),
+            'processTypeOptions' => Ticket::processTypeOptions(),
         ]);
     }
 
@@ -95,14 +96,16 @@ class PublicTicketController extends Controller
         $ticket = $this->ticketService->create([
             'title' => $data['title'],
             'description' => $data['description'],
+            'process_type' => Ticket::normalizeProcessType($data['process_type'] ?? $data['ticket_type'] ?? null),
             'ticket_type' => $data['ticket_type'] ?? null,
             'requester_id' => $requester->id,
             'requester_department_id' => $data['requester_department_id'],
             'ticket_category_id' => $data['ticket_category_id'],
             'ticket_subcategory_id' => $data['ticket_subcategory_id'] ?? null,
             'ticket_detail_subcategory_id' => $data['ticket_detail_subcategory_id'] ?? null,
-            'ticket_priority_id' => $data['ticket_priority_id'] ?? $this->resolveDefaultPriorityId(),
+            'ticket_priority_id' => $data['ticket_priority_id'] ?? null,
             'service_id' => $data['service_id'] ?? null,
+            'request_form_payload' => $data['request_form_payload'] ?? null,
             'asset_id' => $data['asset_id'] ?? null,
             'asset_location_id' => $data['asset_location_id'] ?? null,
             'source' => 'public_web',

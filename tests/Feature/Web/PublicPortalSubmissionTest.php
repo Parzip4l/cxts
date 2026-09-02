@@ -4,6 +4,7 @@ namespace Tests\Feature\Web;
 
 use App\Models\Department;
 use App\Models\InspectionTemplate;
+use App\Models\ServiceCatalog;
 use App\Models\Ticket;
 use App\Models\TicketCategory;
 use App\Models\TicketPriority;
@@ -53,14 +54,30 @@ class PublicPortalSubmissionTest extends TestCase
             'is_active' => true,
         ]);
 
+        $service = ServiceCatalog::query()->create([
+            'code' => 'PUBLIC-REQ-001',
+            'name' => 'Public Access Request',
+            'ownership_model' => ServiceCatalog::OWNERSHIP_INTERNAL,
+            'is_active' => true,
+            'is_requestable' => true,
+            'request_form_schema' => [
+                ['name' => 'employee_id', 'label' => 'Employee ID', 'type' => 'text'],
+            ],
+        ]);
+
         $this->post(route('public.tickets.store'), [
             'requester_name' => 'Public User',
             'requester_email' => 'public.user@example.com',
             'requester_department_id' => $department->id,
             'title' => 'Internet down in meeting room',
             'description' => 'Cannot connect to WiFi from 10 AM.',
+            'process_type' => Ticket::PROCESS_TYPE_SERVICE_REQUEST,
             'ticket_category_id' => $category->id,
             'ticket_priority_id' => $priorityId,
+            'service_id' => $service->id,
+            'request_form_payload' => [
+                'employee_id' => 'PUB-001',
+            ],
             'impact' => 'medium',
             'urgency' => 'medium',
         ])
@@ -71,7 +88,10 @@ class PublicPortalSubmissionTest extends TestCase
         $this->assertDatabaseHas('tickets', [
             'title' => 'Internet down in meeting room',
             'source' => 'public_web',
+            'process_type' => Ticket::PROCESS_TYPE_SERVICE_REQUEST,
         ]);
+
+        $this->assertSame('PUB-001', Ticket::query()->where('title', 'Internet down in meeting room')->first()?->request_form_payload['employee_id'] ?? null);
 
         $this->assertDatabaseHas('users', [
             'email' => 'public.user@example.com',

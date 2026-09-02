@@ -27,6 +27,10 @@ use App\Modules\Notifications\Web\NotificationController;
 use App\Modules\Profile\Web\ProfileController;
 use App\Modules\Tickets\PublicAccess\Web\PublicTicketController;
 use App\Modules\Tickets\EngineerTasks\Web\EngineerTaskController;
+use App\Modules\Tickets\Knowledge\Web\KnowledgeArticleController;
+use App\Modules\Tickets\Monitoring\Web\MonitoringEventController;
+use App\Modules\Tickets\Problems\Web\ProblemController;
+use App\Modules\Tickets\ServiceCommitments\Web\ServiceCommitmentController;
 use App\Modules\Tickets\SlaPolicies\Web\SlaPolicyController;
 use App\Modules\Tickets\SlaPolicyAssignments\Web\SlaPolicyAssignmentController;
 use App\Modules\Tickets\TicketCategories\Web\TicketCategoryController;
@@ -137,6 +141,17 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function (): void {
         Route::post('{ticket}/assign', [TicketController::class, 'assign'])->name('assign');
         Route::get('{ticket}/attachments/{attachment}', [TicketController::class, 'showAttachment'])->name('attachments.show');
     });
+
+    Route::resource('problems', ProblemController::class)->middleware('audit');
+    Route::resource('knowledge-articles', KnowledgeArticleController::class)->middleware('audit');
+    Route::resource('service-commitments', ServiceCommitmentController::class)->middleware(['permission:sla.manage', 'audit']);
+    Route::post('monitoring-events/{monitoring_event}/convert-to-incident', [MonitoringEventController::class, 'convert'])
+        ->name('monitoring-events.convert')
+        ->middleware('audit');
+    Route::post('monitoring-events/{monitoring_event}/ignore', [MonitoringEventController::class, 'ignore'])
+        ->name('monitoring-events.ignore')
+        ->middleware('audit');
+    Route::resource('monitoring-events', MonitoringEventController::class)->only(['index', 'create', 'store', 'show'])->middleware('audit');
 
     Route::prefix('engineer-tasks')->name('engineer-tasks.')->middleware(['permission:engineer_task.view_assigned', 'audit'])->group(function (): void {
         Route::get('', [EngineerTaskController::class, 'index'])->name('index');

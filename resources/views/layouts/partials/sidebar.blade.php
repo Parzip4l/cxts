@@ -142,6 +142,11 @@
                             @if ($canCreateTicketOps)
                                 <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('tickets.index', ['open_create_modal' => 1]) }}">Create Ticket</a></li>
                             @endif
+                            @if ($canViewTicketOps)
+                                <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('problems.index') }}">Problem Management</a></li>
+                                <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('knowledge-articles.index') }}">Knowledge Base</a></li>
+                                <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('monitoring-events.index') }}">Monitoring Events</a></li>
+                            @endif
                         </ul>
                     </div>
                 </li>
@@ -328,6 +333,7 @@
                             @if ($canManageSla)
                                 <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('master-data.sla-policies.index') }}">SLA Policies</a></li>
                                 <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('master-data.sla-policy-assignments.index') }}">SLA Rules</a></li>
+                                <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('service-commitments.index') }}">Service Commitments</a></li>
                             @endif
                         </ul>
                     </div>

@@ -17,6 +17,15 @@
     $selectedStatus = filled($filters['ticket_status_id'] ?? null)
         ? $statusOptions->firstWhere('id', (int) $filters['ticket_status_id'])?->name
         : null;
+    $selectedProcessType = filled($filters['process_type'] ?? null)
+        ? ($processTypeOptions[$filters['process_type']] ?? null)
+        : null;
+    $selectedDetectionSource = filled($filters['incident_detection_source'] ?? null)
+        ? ($detectionSourceOptions[$filters['incident_detection_source']] ?? null)
+        : null;
+    $selectedMajorIncident = filled($filters['is_major_incident'] ?? null)
+        ? (((string) $filters['is_major_incident'] === '1') ? 'Major Incident' : 'Non Major Incident')
+        : null;
     $selectedPriority = filled($filters['ticket_priority_id'] ?? null)
         ? $priorityOptions->firstWhere('id', (int) $filters['ticket_priority_id'])?->name
         : null;
@@ -45,6 +54,9 @@
         $isApprovalQueue ? 'Queue: Needs Approval' : null,
         $isReadyAssignmentQueue ? 'Queue: Ready for Assignment' : null,
         filled($filters['search'] ?? null) ? 'Search: ' . $filters['search'] : null,
+        $selectedProcessType ? 'Process: ' . $selectedProcessType : null,
+        $selectedDetectionSource ? 'Detection: ' . $selectedDetectionSource : null,
+        $selectedMajorIncident,
         $selectedStatus ? 'Status: ' . $selectedStatus : null,
         $selectedPriority ? 'Priority: ' . $selectedPriority : null,
         $selectedApprovalStatus ? 'Approval: ' . $selectedApprovalStatus : null,
@@ -58,6 +70,9 @@
     $advancedFilterApplied = filled($filters['ticket_category_id'] ?? null)
         || filled($filters['ticket_subcategory_id'] ?? null)
         || filled($filters['ticket_detail_subcategory_id'] ?? null)
+        || filled($filters['process_type'] ?? null)
+        || filled($filters['incident_detection_source'] ?? null)
+        || filled($filters['is_major_incident'] ?? null)
         || filled($filters['expected_approver_id'] ?? null)
         || filled($filters['expected_approver_role_code'] ?? null);
     $ticketStatusBadgeClass = function ($statusCode) {
@@ -192,6 +207,17 @@
                             value="{{ $filters['search'] ?? '' }}">
                     </div>
                     <div class="col-sm-6 col-lg-2">
+                        <label class="form-label small text-muted mb-1">Process</label>
+                        <select name="process_type" class="form-select">
+                            <option value="">All processes</option>
+                            @foreach ($processTypeOptions as $processTypeCode => $processTypeLabel)
+                                <option value="{{ $processTypeCode }}" @selected((string) ($filters['process_type'] ?? '') === (string) $processTypeCode)>
+                                    {{ $processTypeLabel }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-sm-6 col-lg-2">
                         <label class="form-label small text-muted mb-1">Status</label>
                         <select name="ticket_status_id" class="form-select">
                             <option value="">All status</option>
@@ -300,6 +326,25 @@
                             </select>
                         </div>
                         <div class="col-lg-3">
+                            <label class="form-label small text-muted mb-1">Detection Source</label>
+                            <select name="incident_detection_source" class="form-select">
+                                <option value="">All detection sources</option>
+                                @foreach ($detectionSourceOptions as $sourceCode => $sourceLabel)
+                                    <option value="{{ $sourceCode }}" @selected((string) ($filters['incident_detection_source'] ?? '') === (string) $sourceCode)>
+                                        {{ $sourceLabel }}
+                                    </option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="col-lg-3">
+                            <label class="form-label small text-muted mb-1">Major Incident</label>
+                            <select name="is_major_incident" class="form-select">
+                                <option value="">All tickets</option>
+                                <option value="1" @selected((string) ($filters['is_major_incident'] ?? '') === '1')>Major only</option>
+                                <option value="0" @selected((string) ($filters['is_major_incident'] ?? '') === '0')>Non major only</option>
+                            </select>
+                        </div>
+                        <div class="col-lg-3">
                             <label class="form-label small text-muted mb-1">Expected Approver</label>
                             <select name="expected_approver_id" class="form-select"
                                 data-searchable-select data-search-placeholder="Search approver">
@@ -341,6 +386,10 @@
                     <div class="small text-muted mb-3">Tampilan disimpan di browser Anda untuk halaman ini.</div>
                     <div class="d-flex flex-column gap-2" id="ticket-column-controls">
                         <label class="form-check m-0">
+                            <input class="form-check-input" type="checkbox" data-column-toggle="process">
+                            <span class="form-check-label">Process</span>
+                        </label>
+                        <label class="form-check m-0">
                             <input class="form-check-input" type="checkbox" data-column-toggle="requester">
                             <span class="form-check-label">Requester</span>
                         </label>
@@ -375,6 +424,7 @@
                     <tr>
                         <th>Ticket</th>
                         <th>Summary</th>
+                        <th class="ticket-optional-column" data-column-key="process" style="display: none;">Process</th>
                         <th class="ticket-optional-column" data-column-key="requester" style="display: none;">Requester</th>
                         <th class="ticket-optional-column" data-column-key="type" style="display: none;">Ticket Type</th>
                         <th class="ticket-optional-column" data-column-key="category" style="display: none;">Ticket Category</th>
@@ -406,11 +456,16 @@
                                 <div class="fw-semibold">{{ $ticket->title }}</div>
                                 <div class="small text-muted mt-1">{{ $ticket->service?->name ?? 'No related service' }}</div>
                                 <div class="d-flex flex-wrap gap-1 mt-2">
+                                    <span class="badge bg-primary-subtle text-primary">{{ $ticket->processTypeLabel() }}</span>
+                                    @if ($ticket->is_major_incident)
+                                        <span class="badge bg-danger-subtle text-danger">Major Incident</span>
+                                    @endif
                                     <span class="badge bg-light text-dark border">{{ $ticket->category?->name ?? '-' }}</span>
                                     <span class="badge bg-light text-dark border">{{ $ticket->subcategory?->name ?? '-' }}</span>
                                     <span class="badge bg-light text-dark border">{{ $ticket->detailSubcategory?->name ?? '-' }}</span>
                                 </div>
                             </td>
+                            <td class="ticket-optional-column" data-column-key="process" style="display: none;">{{ $ticket->processTypeLabel() }}</td>
                             <td class="ticket-optional-column" data-column-key="requester" style="display: none;">
                                 <div>{{ $ticket->requester?->name ?? '-' }}</div>
                                 <small class="text-muted">{{ $ticket->requester?->department?->name ?? 'No department' }}</small>
@@ -477,7 +532,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="12" class="text-center text-muted py-4">No tickets found.</td>
+                            <td colspan="13" class="text-center text-muted py-4">No tickets found.</td>
                         </tr>
                     @endforelse
                 </tbody>

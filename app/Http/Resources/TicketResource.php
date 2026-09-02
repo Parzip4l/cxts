@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Models\Ticket;
 use App\Models\TicketCategory;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -24,6 +25,28 @@ class TicketResource extends JsonResource
             'ticket_number' => $this->ticket_number,
             'title' => $this->title,
             'description' => $this->description,
+            'process_type' => $this->process_type,
+            'process_type_label' => $this->processTypeLabel(),
+            'incident_detection_source' => $this->incident_detection_source,
+            'incident_detection_source_label' => $this->incidentDetectionSourceLabel(),
+            'is_major_incident' => (bool) $this->is_major_incident,
+            'affected_users_count' => $this->affected_users_count,
+            'service_impact_note' => $this->service_impact_note,
+            'incident_resolution_code' => $this->incident_resolution_code,
+            'incident_resolution_code_label' => $this->incidentResolutionCodeLabel(),
+            'incident_lifecycle' => Ticket::incidentLifecycleOptions(),
+            'service_request_lifecycle' => Ticket::serviceRequestLifecycleOptions(),
+            'change_reason' => $this->change_reason,
+            'change_risk_level' => $this->change_risk_level,
+            'change_risk_label' => $this->changeRiskLabel(),
+            'change_planned_start_at' => $this->change_planned_start_at,
+            'change_planned_end_at' => $this->change_planned_end_at,
+            'change_rollback_plan' => $this->change_rollback_plan,
+            'change_affected_scope' => $this->change_affected_scope,
+            'change_review_result' => $this->change_review_result,
+            'change_review_result_label' => $this->changeReviewResultLabel(),
+            'change_review_notes' => $this->change_review_notes,
+            'request_form_payload' => $this->request_form_payload,
             'requester_id' => $this->requester_id,
             'requester_name' => $this->whenLoaded('requester', fn () => $this->requester?->name),
             'requester_department_id' => $this->requester_department_id,
@@ -109,6 +132,8 @@ class TicketResource extends JsonResource
                 fn () => $this->engineer_recommendation
             ),
             'attachments' => TicketAttachmentResource::collection($this->whenLoaded('attachments')),
+            'knowledge_articles' => KnowledgeArticleResource::collection($this->whenLoaded('knowledgeArticles')),
+            'sla_events' => SlaEventResource::collection($this->whenLoaded('slaEvents')),
             'worklogs' => TicketWorklogResource::collection($this->whenLoaded('worklogs')),
             'activities' => TicketActivityResource::collection($this->whenLoaded('activities')),
             'created_at' => $this->created_at,

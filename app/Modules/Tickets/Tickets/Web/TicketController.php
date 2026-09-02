@@ -42,6 +42,9 @@ class TicketController extends Controller
 
         $filters = [
             'search' => $request->input('search'),
+            'process_type' => $request->input('process_type'),
+            'incident_detection_source' => $request->input('incident_detection_source'),
+            'is_major_incident' => $request->input('is_major_incident'),
             'ticket_status_id' => $request->input('ticket_status_id'),
             'ticket_priority_id' => $request->input('ticket_priority_id'),
             'ticket_category_id' => $request->input('ticket_category_id'),
@@ -72,6 +75,8 @@ class TicketController extends Controller
             'engineerOptions' => User::query()->where('role', 'engineer')->orderBy('name')->get(['id', 'name']),
             'approverOptions' => User::query()->whereIn('role', ['super_admin', 'operational_admin', 'supervisor'])->orderBy('name')->get(['id', 'name']),
             'approverRoleOptions' => TicketCategory::approverRoleOptions(),
+            'processTypeOptions' => Ticket::processTypeOptions(),
+            'detectionSourceOptions' => Ticket::detectionSourceOptions(),
             'approvalStatusOptions' => [
                 Ticket::APPROVAL_STATUS_NOT_REQUIRED => 'Not Required',
                 Ticket::APPROVAL_STATUS_PENDING => 'Pending',
@@ -112,7 +117,7 @@ class TicketController extends Controller
             $payload['requester_department_id'] = $request->user()?->department_id;
         }
 
-        $payload['ticket_priority_id'] = $payload['ticket_priority_id'] ?? $this->resolveDefaultPriorityId();
+        $payload['process_type'] = Ticket::normalizeProcessType($payload['process_type'] ?? $payload['ticket_type'] ?? null);
         $payload['source'] = $payload['source'] ?? 'web';
         $payload['impact'] = $payload['impact'] ?? 'medium';
         $payload['urgency'] = $payload['urgency'] ?? 'medium';
@@ -202,6 +207,9 @@ class TicketController extends Controller
             'activities.actor:id,name',
             'activities.oldStatus:id,name',
             'activities.newStatus:id,name',
+            'knowledgeArticles:id,article_number,title,article_type,status,summary',
+            'slaEvents.slaPolicy:id,name',
+            'slaEvents.actor:id,name',
             'attachments',
             'attachments.uploadedBy:id,name',
         ]);
@@ -266,6 +274,11 @@ class TicketController extends Controller
                 ->with('department:id,name')
                 ->orderBy('name')
                 ->get(['id', 'name', 'department_id']),
+            'processTypeOptions' => Ticket::processTypeOptions(),
+            'detectionSourceOptions' => Ticket::detectionSourceOptions(),
+            'resolutionCodeOptions' => Ticket::resolutionCodeOptions(),
+            'changeRiskOptions' => Ticket::changeRiskOptions(),
+            'changeReviewResultOptions' => Ticket::changeReviewResultOptions(),
             'canManageAssignment' => ($request->user()?->can('assign', $ticket) ?? false) && $ticket->canBeAssigned(),
         ]);
     }
@@ -275,7 +288,16 @@ class TicketController extends Controller
         $this->authorize('update', $ticket);
 
         $validated = $request->validated();
-        $this->ticketService->updateDetails($ticket, Arr::only($validated, ['title', 'description']), $request->user());
+        $this->ticketService->updateDetails($ticket, Arr::only($validated, [
+            'title',
+            'description',
+            'process_type',
+            'incident_detection_source',
+            'is_major_incident',
+            'affected_users_count',
+            'service_impact_note',
+            'incident_resolution_code',
+        ]), $request->user());
 
         if (($request->user()?->can('assign', $ticket) ?? false) && $ticket->canBeAssigned()) {
             $engineerIds = collect($validated['assigned_engineer_ids'] ?? [])
@@ -469,7 +491,10 @@ class TicketController extends Controller
             'subcategoryOptions' => TicketSubcategory::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'ticket_category_id']),
             'detailSubcategoryOptions' => TicketDetailSubcategory::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'ticket_subcategory_id']),
             'priorityOptions' => $priorityOptions,
-            'serviceOptions' => ServiceCatalog::query()->where('is_active', true)->orderBy('name')->get(['id', 'name']),
+            'serviceOptions' => ServiceCatalog::query()
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get(['id', 'name', 'is_requestable', 'default_request_approval_required', 'default_request_sla_policy_id', 'fulfillment_team_name', 'request_form_schema']),
             'assetOptions' => Asset::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'service_id', 'asset_location_id', 'asset_category_id']),
             'locationOptions' => AssetLocation::query()->where('is_active', true)->orderBy('name')->get(['id', 'name']),
             'engineerOptions' => User::query()
@@ -480,6 +505,11 @@ class TicketController extends Controller
             'defaultRequesterId' => $authUser?->id,
             'defaultRequesterDepartmentId' => $authUser?->department_id,
             'defaultPriorityId' => $this->resolveDefaultPriorityId($priorityOptions),
+            'processTypeOptions' => Ticket::processTypeOptions(),
+            'detectionSourceOptions' => Ticket::detectionSourceOptions(),
+            'resolutionCodeOptions' => Ticket::resolutionCodeOptions(),
+            'changeRiskOptions' => Ticket::changeRiskOptions(),
+            'changeReviewResultOptions' => Ticket::changeReviewResultOptions(),
         ];
     }
 

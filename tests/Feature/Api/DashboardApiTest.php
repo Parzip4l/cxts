@@ -3,6 +3,7 @@
 namespace Tests\Feature\Api;
 
 use App\Models\Department;
+use App\Models\ServiceCatalog;
 use App\Models\TicketActivity;
 use App\Models\Ticket;
 use App\Models\TicketStatus;
@@ -48,6 +49,13 @@ class DashboardApiTest extends TestCase
         $statusAssigned = TicketStatus::query()->create([
             'code' => 'ASSIGNED',
             'name' => 'Assigned',
+            'is_open' => true,
+            'is_active' => true,
+        ]);
+
+        $statusPendingApproval = TicketStatus::query()->create([
+            'code' => 'PENDING_APPROVAL',
+            'name' => 'Pending Approval',
             'is_open' => true,
             'is_active' => true,
         ]);
@@ -142,6 +150,46 @@ class DashboardApiTest extends TestCase
             'urgency' => 'medium',
         ]);
 
+        $requestService = ServiceCatalog::query()->create([
+            'code' => 'REQ-DASH-001',
+            'name' => 'Access Request',
+            'ownership_model' => ServiceCatalog::OWNERSHIP_INTERNAL,
+            'department_owner_id' => $department->id,
+            'is_active' => true,
+            'is_requestable' => true,
+        ]);
+
+        Ticket::query()->create([
+            'ticket_number' => 'TCK-DASH-0006',
+            'title' => 'Service Request A',
+            'description' => 'Service request description',
+            'process_type' => Ticket::PROCESS_TYPE_SERVICE_REQUEST,
+            'ticket_status_id' => $statusPendingApproval->id,
+            'service_id' => $requestService->id,
+            'requires_approval' => true,
+            'approval_status' => Ticket::APPROVAL_STATUS_PENDING,
+            'approval_requested_at' => now()->subHour(),
+            'source' => 'web',
+            'impact' => 'medium',
+            'urgency' => 'medium',
+        ]);
+
+        Ticket::query()->create([
+            'ticket_number' => 'TCK-DASH-0007',
+            'title' => 'Firewall Maintenance Change',
+            'description' => 'Scheduled firmware maintenance.',
+            'process_type' => Ticket::PROCESS_TYPE_CHANGE_REQUEST,
+            'ticket_status_id' => $statusAssigned->id,
+            'service_id' => $requestService->id,
+            'change_risk_level' => 'high',
+            'change_planned_start_at' => now()->addHours(8),
+            'change_planned_end_at' => now()->addHours(9),
+            'change_rollback_plan' => 'Restore previous image.',
+            'source' => 'web',
+            'impact' => 'medium',
+            'urgency' => 'medium',
+        ]);
+
         TicketWorklog::query()->create([
             'ticket_id' => $ticketOnTime->id,
             'user_id' => $engineerOne->id,
@@ -193,13 +241,21 @@ class DashboardApiTest extends TestCase
         $this->withHeader('Authorization', 'Bearer '.$token)
             ->getJson('/api/v1/dashboard/overview'.$query)
             ->assertOk()
-            ->assertJsonPath('summary.total_tickets', 5)
+            ->assertJsonPath('summary.total_tickets', 7)
             ->assertJsonPath('summary.mttr_minutes', 86.67)
             ->assertJsonPath('summary.mttr_ticket_count', 3)
             ->assertJsonPath('summary.reopened_ticket_count', 1)
             ->assertJsonPath('summary.reopen_rate', 33.33)
             ->assertJsonPath('sla.response.breached', 2)
-            ->assertJsonPath('sla.resolution.breached', 1);
+            ->assertJsonPath('sla.resolution.breached', 1)
+            ->assertJsonPath('incident_trend.total_incidents', 5)
+            ->assertJsonPath('incident_trend.breached_incidents', 2)
+            ->assertJsonPath('incident_trend.reopened_incidents', 1)
+            ->assertJsonPath('request_fulfillment.total_requests', 1)
+            ->assertJsonPath('request_fulfillment.pending_approval_requests', 1)
+            ->assertJsonPath('request_fulfillment.top_services.0.name', 'Access Request')
+            ->assertJsonPath('upcoming_changes.0.ticket_number', 'TCK-DASH-0007')
+            ->assertJsonPath('upcoming_changes.0.risk_level', 'high');
 
         $this->withHeader('Authorization', 'Bearer '.$token)
             ->getJson('/api/v1/dashboard/engineer-effectiveness'.$query)

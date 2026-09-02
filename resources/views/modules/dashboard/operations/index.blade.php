@@ -8,12 +8,23 @@
         $slaSummary = $overview['sla'];
         $inspectionSummary = $overview['inspection_summary'];
         $reportStructure = $overview['report_structure'];
+        $incidentTrend = $overview['incident_trend'] ?? [];
+        $requestFulfillment = $overview['request_fulfillment'] ?? [];
+        $eventSummary = $overview['event_summary'] ?? [];
+        $upcomingChanges = collect($overview['upcoming_changes'] ?? []);
         $dailyTrend = collect($overview['daily_trend'] ?? []);
         $topEngineers = collect($overview['top_engineers'] ?? []);
         $topEngineer = $topEngineers->first();
         $taxonomyHotspots = collect($reportStructure['taxonomy_breakdown'] ?? [])->take(5);
         $statusDistribution = collect($reportStructure['status_distribution'] ?? [])->take(5);
         $priorityDistribution = collect($reportStructure['priority_distribution'] ?? [])->take(4);
+        $incidentTopServices = collect($incidentTrend['top_services'] ?? [])->take(5);
+        $incidentTopAssets = collect($incidentTrend['top_assets'] ?? [])->take(5);
+        $incidentRepeatGroups = collect($incidentTrend['repeat_groups'] ?? [])->take(5);
+        $requestStateCounts = collect($requestFulfillment['state_counts'] ?? [])->take(5);
+        $requestTopServices = collect($requestFulfillment['top_services'] ?? [])->take(5);
+        $eventSeverityCounts = collect($eventSummary['severity_counts'] ?? [])->take(5);
+        $eventTopSources = collect($eventSummary['top_sources'] ?? [])->take(5);
         $criticalAlerts = collect($slaPerformance['breach_tickets'] ?? [])->take(5);
         $responseCompliance = (float) ($slaSummary['response']['compliance_rate'] ?? 0);
         $resolutionCompliance = (float) ($slaSummary['resolution']['compliance_rate'] ?? 0);
@@ -189,6 +200,262 @@
         </div>
     </div>
 
+    <div class="card border-0 shadow-sm dashboard-section-card mb-4">
+        <div class="card-header bg-transparent border-0 d-flex justify-content-between align-items-center dashboard-section-header">
+            <div>
+                <h4 class="card-title mb-1">Monitoring Events</h4>
+                <small class="text-muted">Ringkasan event intake, deduplication, dan conversion ke incident.</small>
+            </div>
+            <a href="{{ route('monitoring-events.index') }}" class="btn btn-sm btn-outline-primary">Open Events</a>
+        </div>
+        <div class="card-body pt-3">
+            <div class="row g-3 mb-3">
+                <div class="col-sm-6 col-xl-3">
+                    <div class="dashboard-mini-panel rounded-3 p-3 h-100">
+                        <div class="text-muted text-uppercase fw-semibold small mb-2">Total Events</div>
+                        <h4 class="mb-1">{{ number_format($eventSummary['total_events'] ?? 0) }}</h4>
+                        <div class="small text-muted">Event pada periode aktif.</div>
+                    </div>
+                </div>
+                <div class="col-sm-6 col-xl-3">
+                    <div class="dashboard-mini-panel rounded-3 p-3 h-100">
+                        <div class="text-muted text-uppercase fw-semibold small mb-2">Open Events</div>
+                        <h4 class="mb-1">{{ number_format($eventSummary['open_events'] ?? 0) }}</h4>
+                        <div class="small text-muted">Belum dikonversi atau diabaikan.</div>
+                    </div>
+                </div>
+                <div class="col-sm-6 col-xl-3">
+                    <div class="dashboard-mini-panel rounded-3 p-3 h-100">
+                        <div class="text-muted text-uppercase fw-semibold small mb-2">Converted</div>
+                        <h4 class="mb-1">{{ number_format($eventSummary['converted_events'] ?? 0) }}</h4>
+                        <div class="small text-muted">Sudah dibuatkan incident.</div>
+                    </div>
+                </div>
+                <div class="col-sm-6 col-xl-3">
+                    <div class="dashboard-mini-panel rounded-3 p-3 h-100">
+                        <div class="text-muted text-uppercase fw-semibold small mb-2">High / Critical</div>
+                        <h4 class="mb-1">{{ number_format(($eventSummary['high_events'] ?? 0) + ($eventSummary['critical_events'] ?? 0)) }}</h4>
+                        <div class="small text-muted">Butuh triage lebih cepat.</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row g-3">
+                <div class="col-xl-6">
+                    <div class="dashboard-table-shell">
+                        <table class="table align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Severity</th>
+                                    <th class="text-center">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @forelse ($eventSeverityCounts as $row)
+                                    <tr>
+                                        <td class="fw-medium">{{ $row['label'] }}</td>
+                                        <td class="text-center">{{ number_format($row['total_events']) }}</td>
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="2" class="text-center text-muted py-3">No event severity data.</td>
+                                    </tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="col-xl-6">
+                    <div class="dashboard-table-shell">
+                        <table class="table align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Top Source</th>
+                                    <th class="text-center">Total</th>
+                                    <th class="text-center">Converted</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @forelse ($eventTopSources as $row)
+                                    <tr>
+                                        <td class="fw-medium">{{ $row['source'] }}</td>
+                                        <td class="text-center">{{ number_format($row['total_events']) }}</td>
+                                        <td class="text-center">{{ number_format($row['converted_events']) }}</td>
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="3" class="text-center text-muted py-3">No event source data.</td>
+                                    </tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm dashboard-section-card mb-4">
+        <div class="card-header bg-transparent border-0 d-flex justify-content-between align-items-center dashboard-section-header">
+            <div>
+                <h4 class="card-title mb-1">Request Fulfillment</h4>
+                <small class="text-muted">Ringkasan Service Request untuk volume, approval, completion, SLA, dan fulfillment state.</small>
+            </div>
+            <span class="badge bg-primary-subtle text-primary">ITIL Phase 1</span>
+        </div>
+        <div class="card-body pt-3">
+            <div class="row g-3 mb-3">
+                <div class="col-sm-6 col-xl-3">
+                    <div class="dashboard-mini-panel rounded-3 p-3 h-100">
+                        <div class="text-muted text-uppercase fw-semibold small mb-2">Total Requests</div>
+                        <h4 class="mb-1">{{ number_format($requestFulfillment['total_requests'] ?? 0) }}</h4>
+                        <div class="small text-muted">Ticket dengan process type Service Request.</div>
+                    </div>
+                </div>
+                <div class="col-sm-6 col-xl-3">
+                    <div class="dashboard-mini-panel rounded-3 p-3 h-100">
+                        <div class="text-muted text-uppercase fw-semibold small mb-2">Pending Approval</div>
+                        <h4 class="mb-1">{{ number_format($requestFulfillment['pending_approval_requests'] ?? 0) }}</h4>
+                        <div class="small text-muted">Request menunggu persetujuan.</div>
+                    </div>
+                </div>
+                <div class="col-sm-6 col-xl-3">
+                    <div class="dashboard-mini-panel rounded-3 p-3 h-100">
+                        <div class="text-muted text-uppercase fw-semibold small mb-2">Fulfilled</div>
+                        <h4 class="mb-1">{{ number_format($requestFulfillment['fulfilled_requests'] ?? 0) }}</h4>
+                        <div class="small text-muted">Request sudah selesai dipenuhi.</div>
+                    </div>
+                </div>
+                <div class="col-sm-6 col-xl-3">
+                    <div class="dashboard-mini-panel rounded-3 p-3 h-100">
+                        <div class="text-muted text-uppercase fw-semibold small mb-2">SLA Breach</div>
+                        <h4 class="mb-1">{{ number_format($requestFulfillment['breached_requests'] ?? 0) }}</h4>
+                        <div class="small text-muted">Request dengan pelanggaran SLA tercatat.</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row g-3">
+                <div class="col-xl-4">
+                    <div class="dashboard-mini-panel rounded-3 p-3 h-100">
+                        <div class="text-muted text-uppercase fw-semibold small mb-2">Average Approval Time</div>
+                        <h4 class="mb-1">
+                            {{ ($requestFulfillment['avg_approval_minutes'] ?? null) !== null ? number_format($requestFulfillment['avg_approval_minutes'], 1) . ' min' : '-' }}
+                        </h4>
+                        <div class="text-muted text-uppercase fw-semibold small mt-4 mb-2">Average Completion Time</div>
+                        <h4 class="mb-0">
+                            {{ ($requestFulfillment['avg_completion_minutes'] ?? null) !== null ? number_format($requestFulfillment['avg_completion_minutes'], 1) . ' min' : '-' }}
+                        </h4>
+                    </div>
+                </div>
+                <div class="col-xl-4">
+                    <div class="dashboard-table-shell">
+                        <table class="table align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Fulfillment State</th>
+                                    <th class="text-center">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @forelse ($requestStateCounts as $row)
+                                    <tr>
+                                        <td>
+                                            <div class="fw-medium">{{ $row['label'] }}</div>
+                                            <div class="small text-muted">{{ $row['status_code'] }}</div>
+                                        </td>
+                                        <td class="text-center">{{ number_format($row['total_tickets']) }}</td>
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="2" class="text-center text-muted py-3">No request state data.</td>
+                                    </tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="col-xl-4">
+                    <div class="dashboard-table-shell">
+                        <table class="table align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Top Request Service</th>
+                                    <th class="text-center">Total</th>
+                                    <th class="text-center">Done</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @forelse ($requestTopServices as $row)
+                                    <tr>
+                                        <td class="fw-medium">{{ $row['name'] }}</td>
+                                        <td class="text-center">{{ number_format($row['total_tickets']) }}</td>
+                                        <td class="text-center">{{ number_format($row['fulfilled_tickets']) }}</td>
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="3" class="text-center text-muted py-3">No request service data.</td>
+                                    </tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm dashboard-section-card mb-4">
+        <div class="card-header bg-transparent border-0 d-flex justify-content-between align-items-center dashboard-section-header">
+            <div>
+                <h4 class="card-title mb-1">Change Schedule</h4>
+                <small class="text-muted">Daftar Change Request terjadwal pada periode filter dashboard.</small>
+            </div>
+            <span class="badge bg-primary-subtle text-primary">{{ $upcomingChanges->count() }} scheduled</span>
+        </div>
+        <div class="card-body pt-3">
+            <div class="dashboard-table-shell">
+                <table class="table align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Ticket</th>
+                            <th>Window</th>
+                            <th>Service / Asset</th>
+                            <th>Risk</th>
+                            <th>Status</th>
+                            <th>PIR</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse ($upcomingChanges as $change)
+                            <tr>
+                                <td>
+                                    <div class="fw-semibold">{{ $change['ticket_number'] }}</div>
+                                    <div class="small text-muted">{{ $change['title'] }}</div>
+                                </td>
+                                <td>
+                                    <div class="fw-medium">{{ optional($change['planned_start_at'])->format('d M Y H:i') ?? '-' }}</div>
+                                    <div class="small text-muted">to {{ optional($change['planned_end_at'])->format('d M Y H:i') ?? '-' }}</div>
+                                </td>
+                                <td>
+                                    <div>{{ $change['service_name'] ?? '-' }}</div>
+                                    <div class="small text-muted">{{ $change['asset_name'] ?? '-' }}</div>
+                                </td>
+                                <td><span class="badge bg-light text-dark border">{{ $change['risk_label'] ?? '-' }}</span></td>
+                                <td>{{ $change['status_name'] ?? '-' }}</td>
+                                <td>{{ $change['review_result_label'] ?? '-' }}</td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="6" class="text-center text-muted py-3">No scheduled change in selected period.</td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
     <div class="row g-3 mb-4 align-items-start">
         <div class="col-xl-8">
             <div class="card border-0 shadow-sm dashboard-section-card">
@@ -322,6 +589,130 @@
                                 <div class="small text-muted">Ticket belum punya owner dan bisa menahan response SLA.</div>
                             </div>
                         </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm dashboard-section-card mb-4">
+        <div class="card-header bg-transparent border-0 d-flex justify-content-between align-items-center dashboard-section-header">
+            <div>
+                <h4 class="card-title mb-1">Incident Trend</h4>
+                <small class="text-muted">Ringkasan Incident Management untuk category, service, asset, breach, reopen, dan repeat pattern.</small>
+            </div>
+            <span class="badge bg-primary-subtle text-primary">ITIL Phase 1</span>
+        </div>
+        <div class="card-body pt-3">
+            <div class="row g-3 mb-3">
+                <div class="col-sm-6 col-xl-3">
+                    <div class="dashboard-mini-panel rounded-3 p-3 h-100">
+                        <div class="text-muted text-uppercase fw-semibold small mb-2">Total Incidents</div>
+                        <h4 class="mb-1">{{ number_format($incidentTrend['total_incidents'] ?? 0) }}</h4>
+                        <div class="small text-muted">Ticket dengan process type Incident.</div>
+                    </div>
+                </div>
+                <div class="col-sm-6 col-xl-3">
+                    <div class="dashboard-mini-panel rounded-3 p-3 h-100">
+                        <div class="text-muted text-uppercase fw-semibold small mb-2">Major Incidents</div>
+                        <h4 class="mb-1">{{ number_format($incidentTrend['major_incidents'] ?? 0) }}</h4>
+                        <div class="small text-muted">Gangguan yang ditandai berdampak luas.</div>
+                    </div>
+                </div>
+                <div class="col-sm-6 col-xl-3">
+                    <div class="dashboard-mini-panel rounded-3 p-3 h-100">
+                        <div class="text-muted text-uppercase fw-semibold small mb-2">SLA Breach</div>
+                        <h4 class="mb-1">{{ number_format($incidentTrend['breached_incidents'] ?? 0) }}</h4>
+                        <div class="small text-muted">Incident dengan response/resolution risk.</div>
+                    </div>
+                </div>
+                <div class="col-sm-6 col-xl-3">
+                    <div class="dashboard-mini-panel rounded-3 p-3 h-100">
+                        <div class="text-muted text-uppercase fw-semibold small mb-2">Reopened</div>
+                        <h4 class="mb-1">{{ number_format($incidentTrend['reopened_incidents'] ?? 0) }}</h4>
+                        <div class="small text-muted">Incident yang pernah dibuka kembali.</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row g-3">
+                <div class="col-xl-4">
+                    <div class="dashboard-table-shell">
+                        <table class="table align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Top Service</th>
+                                    <th class="text-center">Total</th>
+                                    <th class="text-center">Open</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @forelse ($incidentTopServices as $row)
+                                    <tr>
+                                        <td class="fw-medium">{{ $row['name'] }}</td>
+                                        <td class="text-center">{{ number_format($row['total_tickets']) }}</td>
+                                        <td class="text-center">{{ number_format($row['open_tickets']) }}</td>
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="3" class="text-center text-muted py-3">No incident service data.</td>
+                                    </tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="col-xl-4">
+                    <div class="dashboard-table-shell">
+                        <table class="table align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Top Asset</th>
+                                    <th class="text-center">Total</th>
+                                    <th class="text-center">Open</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @forelse ($incidentTopAssets as $row)
+                                    <tr>
+                                        <td class="fw-medium">{{ $row['name'] }}</td>
+                                        <td class="text-center">{{ number_format($row['total_tickets']) }}</td>
+                                        <td class="text-center">{{ number_format($row['open_tickets']) }}</td>
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="3" class="text-center text-muted py-3">No incident asset data.</td>
+                                    </tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="col-xl-4">
+                    <div class="dashboard-table-shell">
+                        <table class="table align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Repeat Pattern</th>
+                                    <th class="text-center">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @forelse ($incidentRepeatGroups as $row)
+                                    <tr>
+                                        <td>
+                                            <div class="fw-medium">{{ $row['detail_name'] }}</div>
+                                            <div class="small text-muted">{{ $row['category_name'] }} / {{ $row['subcategory_name'] }}</div>
+                                        </td>
+                                        <td class="text-center">{{ number_format($row['total_tickets']) }}</td>
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="2" class="text-center text-muted py-3">No repeated pattern yet.</td>
+                                    </tr>
+                                @endforelse
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>

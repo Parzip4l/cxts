@@ -28,10 +28,15 @@ class AssetController extends Controller
             'vendor_id' => $request->input('vendor_id'),
             'asset_location_id' => $request->input('asset_location_id'),
             'criticality' => $request->input('criticality'),
+            'ci_type' => $request->input('ci_type'),
         ];
 
         if ($request->has('is_active') && $request->input('is_active') !== '') {
             $filters['is_active'] = (bool) $request->input('is_active');
+        }
+
+        if ($request->has('is_configuration_item') && $request->input('is_configuration_item') !== '') {
+            $filters['is_configuration_item'] = (bool) $request->input('is_configuration_item');
         }
 
         $assets = $this->assetService->paginate($filters, (int) $request->input('per_page', 15));
@@ -46,14 +51,18 @@ class AssetController extends Controller
 
     public function show(Asset $asset): AssetResource
     {
-        return new AssetResource($asset->load([
+        $asset->load([
             'category:id,name',
             'service:id,name',
             'ownerDepartment:id,name',
             'vendor:id,name',
             'location:id,name',
             'status:id,name',
-        ]));
+            'relationships.relatedAsset:id,code,name,service_id,criticality',
+            'impactedByRelationships.asset:id,code,name,service_id,criticality',
+        ])->loadCount('tickets');
+
+        return new AssetResource($asset);
     }
 
     public function update(UpdateAssetRequest $request, Asset $asset): AssetResource

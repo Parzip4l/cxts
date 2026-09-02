@@ -3,6 +3,15 @@
 @section('content')
 @include('layouts.partials.page-title', ['title' => 'Master Data', 'subtitle' => $pageTitle])
 
+@php
+    $selectedDependsOnAssetIds = collect(old('depends_on_asset_ids', $asset->relationLoaded('dependsOnRelationships') ? $asset->dependsOnRelationships->pluck('related_asset_id')->all() : []))
+        ->map(fn ($id) => (string) $id)
+        ->all();
+    $selectedSupportsAssetIds = collect(old('supports_asset_ids', $asset->relationLoaded('supportsRelationships') ? $asset->supportsRelationships->pluck('related_asset_id')->all() : []))
+        ->map(fn ($id) => (string) $id)
+        ->all();
+@endphp
+
 <div class="card">
     <div class="card-body">
         <form method="POST" action="{{ $action }}" class="row g-3">
@@ -180,6 +189,100 @@
                     value="{{ old('warranty_end_date', optional($asset->warranty_end_date)->format('Y-m-d')) }}">
                 @error('warranty_end_date')
                     <div class="invalid-feedback">{{ $message }}</div>
+                @enderror
+            </div>
+
+            <div class="col-12">
+                <hr class="my-2">
+                <h5 class="mb-2">CMDB Relationships</h5>
+            </div>
+
+            <div class="col-md-3">
+                <input type="hidden" name="is_configuration_item" value="0">
+                <div class="form-check mt-4">
+                    <input class="form-check-input" type="checkbox" id="is_configuration_item" name="is_configuration_item" value="1"
+                        @checked((bool) old('is_configuration_item', $asset->is_configuration_item ?? false))>
+                    <label class="form-check-label" for="is_configuration_item">Configuration Item</label>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <label for="ci_type" class="form-label">CI Type</label>
+                <select id="ci_type" name="ci_type" class="form-select @error('ci_type') is-invalid @enderror">
+                    <option value="">- None -</option>
+                    @foreach ($ciTypeOptions as $ciTypeCode => $ciTypeLabel)
+                        <option value="{{ $ciTypeCode }}" @selected(old('ci_type', $asset->ci_type) === $ciTypeCode)>
+                            {{ $ciTypeLabel }}
+                        </option>
+                    @endforeach
+                </select>
+                @error('ci_type')
+                    <div class="invalid-feedback">{{ $message }}</div>
+                @enderror
+            </div>
+
+            <div class="col-md-3">
+                <label for="ci_lifecycle_state" class="form-label">CI Lifecycle</label>
+                <select id="ci_lifecycle_state" name="ci_lifecycle_state" class="form-select @error('ci_lifecycle_state') is-invalid @enderror">
+                    <option value="">- None -</option>
+                    @foreach ($ciLifecycleOptions as $ciStateCode => $ciStateLabel)
+                        <option value="{{ $ciStateCode }}" @selected(old('ci_lifecycle_state', $asset->ci_lifecycle_state) === $ciStateCode)>
+                            {{ $ciStateLabel }}
+                        </option>
+                    @endforeach
+                </select>
+                @error('ci_lifecycle_state')
+                    <div class="invalid-feedback">{{ $message }}</div>
+                @enderror
+            </div>
+
+            <div class="col-md-3">
+                <label for="ci_governance_note" class="form-label">CI Governance Note</label>
+                <input type="text" id="ci_governance_note" name="ci_governance_note"
+                    class="form-control @error('ci_governance_note') is-invalid @enderror"
+                    value="{{ old('ci_governance_note', $asset->ci_governance_note) }}">
+                @error('ci_governance_note')
+                    <div class="invalid-feedback">{{ $message }}</div>
+                @enderror
+            </div>
+
+            <div class="col-md-6">
+                <label for="depends_on_asset_ids" class="form-label">Depends On Assets</label>
+                <select id="depends_on_asset_ids" name="depends_on_asset_ids[]"
+                    class="form-select @error('depends_on_asset_ids') is-invalid @enderror @error('depends_on_asset_ids.*') is-invalid @enderror"
+                    data-searchable-select data-force-searchable-select="true" data-search-placeholder="Search dependency asset" multiple>
+                    @foreach ($assetOptions as $option)
+                        <option value="{{ $option->id }}" @selected(in_array((string) $option->id, $selectedDependsOnAssetIds, true))>
+                            {{ $option->code }} - {{ $option->name }}
+                        </option>
+                    @endforeach
+                </select>
+                <div class="form-text">Asset ini bergantung pada asset yang dipilih.</div>
+                @error('depends_on_asset_ids')
+                    <div class="invalid-feedback d-block">{{ $message }}</div>
+                @enderror
+                @error('depends_on_asset_ids.*')
+                    <div class="invalid-feedback d-block">{{ $message }}</div>
+                @enderror
+            </div>
+
+            <div class="col-md-6">
+                <label for="supports_asset_ids" class="form-label">Supports Assets</label>
+                <select id="supports_asset_ids" name="supports_asset_ids[]"
+                    class="form-select @error('supports_asset_ids') is-invalid @enderror @error('supports_asset_ids.*') is-invalid @enderror"
+                    data-searchable-select data-force-searchable-select="true" data-search-placeholder="Search supported asset" multiple>
+                    @foreach ($assetOptions as $option)
+                        <option value="{{ $option->id }}" @selected(in_array((string) $option->id, $selectedSupportsAssetIds, true))>
+                            {{ $option->code }} - {{ $option->name }}
+                        </option>
+                    @endforeach
+                </select>
+                <div class="form-text">Asset yang dipilih akan masuk impact view jika asset ini terganggu.</div>
+                @error('supports_asset_ids')
+                    <div class="invalid-feedback d-block">{{ $message }}</div>
+                @enderror
+                @error('supports_asset_ids.*')
+                    <div class="invalid-feedback d-block">{{ $message }}</div>
                 @enderror
             </div>
 

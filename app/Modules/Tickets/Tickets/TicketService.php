@@ -7,7 +7,9 @@ use App\Models\TicketActivity;
 use App\Models\TicketAttachment;
 use App\Models\TicketAssignment;
 use App\Models\TicketEngineerAssignment;
+use App\Models\ServiceCatalog;
 use App\Models\TicketCategory;
+use App\Models\TicketPriority;
 use App\Models\TicketStatus;
 use App\Models\TicketWorklog;
 use App\Models\User;
@@ -74,6 +76,9 @@ class TicketService
             })
             ->when($filters['ticket_status_id'] ?? null, fn ($query, $statusId) => $query->where('ticket_status_id', $statusId))
             ->when($filters['ticket_priority_id'] ?? null, fn ($query, $priorityId) => $query->where('ticket_priority_id', $priorityId))
+            ->when($filters['process_type'] ?? null, fn ($query, $processType) => $query->where('process_type', Ticket::normalizeProcessType($processType)))
+            ->when($filters['incident_detection_source'] ?? null, fn ($query, $source) => $query->where('incident_detection_source', $source))
+            ->when(array_key_exists('is_major_incident', $filters) && $filters['is_major_incident'] !== null && $filters['is_major_incident'] !== '', fn ($query) => $query->where('is_major_incident', (bool) $filters['is_major_incident']))
             ->when($filters['ticket_category_id'] ?? null, fn ($query, $categoryId) => $query->where('ticket_category_id', $categoryId))
             ->when($filters['ticket_subcategory_id'] ?? null, fn ($query, $subcategoryId) => $query->where('ticket_subcategory_id', $subcategoryId))
             ->when($filters['ticket_detail_subcategory_id'] ?? null, fn ($query, $detailSubcategoryId) => $query->where('ticket_detail_subcategory_id', $detailSubcategoryId))
@@ -103,8 +108,27 @@ class TicketService
     public function create(array $data, ?User $actor = null): Ticket
     {
         return DB::transaction(function () use ($data, $actor): Ticket {
+            $data['impact'] = filled($data['impact'] ?? null) ? $data['impact'] : Ticket::IMPACT_MEDIUM;
+            $data['urgency'] = filled($data['urgency'] ?? null) ? $data['urgency'] : Ticket::IMPACT_MEDIUM;
+            $data['ticket_priority_id'] = filled($data['ticket_priority_id'] ?? null)
+                ? $data['ticket_priority_id']
+                : $this->resolvePriorityIdByImpactUrgency($data['impact'], $data['urgency']);
+            $data['process_type'] = Ticket::normalizeProcessType(
+                $data['process_type']
+                    ?? $data['ticket_type']
+                    ?? $this->deriveTicketTypeFromCategoryId($data['ticket_category_id'] ?? null)
+            );
+            $serviceRequestDefaults = $this->resolveServiceRequestCatalogDefaults($data);
+            $data = [
+                ...$data,
+                ...$serviceRequestDefaults['data'],
+            ];
+
             $now = CarbonImmutable::now();
-            $flowPolicy = $this->ticketFlowPolicyResolver->resolve($data);
+            $flowPolicy = $this->applyServiceRequestFlowDefaults(
+                $this->ticketFlowPolicyResolver->resolve($data),
+                $serviceRequestDefaults['flow_policy']
+            );
             $initialApprovalStatus = $flowPolicy['requires_approval']
                 ? Ticket::APPROVAL_STATUS_PENDING
                 : Ticket::APPROVAL_STATUS_NOT_REQUIRED;
@@ -117,6 +141,7 @@ class TicketService
             $ticket = Ticket::query()->create([
                 ...$ticketData,
                 'ticket_number' => $this->generateTicketNumber(),
+                'process_type' => $data['process_type'],
                 'ticket_status_id' => $initialStatus?->id,
                 'requires_approval' => $flowPolicy['requires_approval'],
                 'allow_direct_assignment' => $flowPolicy['allow_direct_assignment'],
@@ -146,6 +171,7 @@ class TicketService
                 newStatusId: $initialStatus?->id,
                 metadata: [
                     'source' => $ticket->source,
+                    'process_type' => $ticket->process_type,
                     'sla_source' => $resolvedSla->source,
                     'sla_policy_id' => $ticket->sla_policy_id,
                     'sla_name' => $ticket->sla_name_snapshot,
@@ -682,10 +708,51 @@ class TicketService
             $ticket->fill([
                 'title' => $data['title'],
                 'description' => $data['description'],
+                'process_type' => Ticket::normalizeProcessType($data['process_type'] ?? $ticket->process_type),
                 'updated_by_id' => $actor?->id,
             ]);
 
-            $changes = collect(['title', 'description'])
+            foreach ([
+                'incident_detection_source',
+                'affected_users_count',
+                'service_impact_note',
+                'incident_resolution_code',
+                'change_reason',
+                'change_risk_level',
+                'change_planned_start_at',
+                'change_planned_end_at',
+                'change_rollback_plan',
+                'change_affected_scope',
+                'change_review_result',
+                'change_review_notes',
+            ] as $field) {
+                if (array_key_exists($field, $data)) {
+                    $ticket->{$field} = $data[$field];
+                }
+            }
+
+            if (array_key_exists('is_major_incident', $data)) {
+                $ticket->is_major_incident = (bool) $data['is_major_incident'];
+            }
+
+            $changes = collect([
+                'title',
+                'description',
+                'process_type',
+                'incident_detection_source',
+                'is_major_incident',
+                'affected_users_count',
+                'service_impact_note',
+                'incident_resolution_code',
+                'change_reason',
+                'change_risk_level',
+                'change_planned_start_at',
+                'change_planned_end_at',
+                'change_rollback_plan',
+                'change_affected_scope',
+                'change_review_result',
+                'change_review_notes',
+            ])
                 ->filter(fn ($field) => $ticket->isDirty($field))
                 ->mapWithKeys(fn ($field) => [
                     $field => [
@@ -723,6 +790,99 @@ class TicketService
         }
 
         return $status;
+    }
+
+    public function resolvePriorityIdByImpactUrgency(?string $impact, ?string $urgency): ?int
+    {
+        $priorityCode = Ticket::priorityCodeForImpactUrgency($impact, $urgency);
+
+        return TicketPriority::query()
+            ->where('is_active', true)
+            ->where('code', $priorityCode)
+            ->value('id')
+            ?? TicketPriority::query()
+                ->where('is_active', true)
+                ->orderBy('level')
+                ->value('id');
+    }
+
+    private function resolveServiceRequestCatalogDefaults(array $data): array
+    {
+        if (($data['process_type'] ?? null) !== Ticket::PROCESS_TYPE_SERVICE_REQUEST) {
+            return [
+                'data' => [],
+                'flow_policy' => null,
+            ];
+        }
+
+        $serviceId = $data['service_id'] ?? $data['service_item_id'] ?? null;
+        if ($serviceId === null || $serviceId === '') {
+            return [
+                'data' => [],
+                'flow_policy' => null,
+            ];
+        }
+
+        $service = ServiceCatalog::query()
+            ->with(['manager:id,name'])
+            ->find($serviceId);
+
+        if ($service === null) {
+            return [
+                'data' => [],
+                'flow_policy' => null,
+            ];
+        }
+
+        $defaultData = [];
+        if (! filled($data['sla_policy_id'] ?? null) && filled($service->default_request_sla_policy_id)) {
+            $defaultData['sla_policy_id'] = $service->default_request_sla_policy_id;
+        }
+
+        if (! filled($data['assigned_team_name'] ?? null) && filled($service->fulfillment_team_name)) {
+            $defaultData['assigned_team_name'] = $service->fulfillment_team_name;
+        }
+
+        $flowPolicy = null;
+        if ($service->default_request_approval_required !== null) {
+            $requiresApproval = (bool) $service->default_request_approval_required;
+            $flowPolicy = [
+                'requires_approval' => $requiresApproval,
+                'allow_direct_assignment' => true,
+                'approver_user_id' => $requiresApproval ? $service->service_manager_user_id : null,
+                'approver_name' => $requiresApproval
+                    ? ($service->manager?->name ?? ($service->name ? $service->name . ' Manager' : null))
+                    : null,
+                'approver_strategy' => $requiresApproval
+                    ? TicketCategory::APPROVER_STRATEGY_SERVICE_MANAGER
+                    : TicketCategory::APPROVER_STRATEGY_FALLBACK,
+                'approver_role_code' => null,
+                'source' => 'service_catalog',
+            ];
+
+            if ($requiresApproval && $flowPolicy['approver_user_id'] === null) {
+                $flowPolicy['approver_strategy'] = TicketCategory::APPROVER_STRATEGY_ROLE_BASED;
+                $flowPolicy['approver_role_code'] = 'supervisor';
+                $flowPolicy['approver_name'] = TicketCategory::approverRoleLabel('supervisor');
+            }
+        }
+
+        return [
+            'data' => $defaultData,
+            'flow_policy' => $flowPolicy,
+        ];
+    }
+
+    private function applyServiceRequestFlowDefaults(array $flowPolicy, ?array $serviceFlowPolicy): array
+    {
+        if ($serviceFlowPolicy === null) {
+            return $flowPolicy;
+        }
+
+        return [
+            ...$flowPolicy,
+            ...$serviceFlowPolicy,
+        ];
     }
 
     private function normalizeAssignedEngineers(User|iterable $assignedEngineers): \Illuminate\Support\Collection
@@ -1027,7 +1187,7 @@ class TicketService
     private function slaContext(array $data): array
     {
         return [
-            'ticket_type' => $data['ticket_type'] ?? $this->deriveTicketTypeFromCategoryId($data['ticket_category_id'] ?? null),
+            'ticket_type' => Ticket::normalizeProcessType($data['process_type'] ?? $data['ticket_type'] ?? $this->deriveTicketTypeFromCategoryId($data['ticket_category_id'] ?? null)),
             'category_id' => $data['ticket_category_id'] ?? null,
             'subcategory_id' => $data['ticket_subcategory_id'] ?? null,
             'detail_subcategory_id' => $data['ticket_detail_subcategory_id'] ?? null,
@@ -1161,6 +1321,8 @@ class TicketService
             'rejectedBy:id,name',
             'assignmentReadyBy:id,name',
             'slaPolicy:id,name',
+            'slaEvents.slaPolicy:id,name',
+            'slaEvents.actor:id,name',
             'attachments',
             'attachments.uploadedBy:id,name',
         ];

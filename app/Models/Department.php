@@ -49,6 +49,11 @@ class Department extends Model
         return $this->hasMany(ServiceCatalog::class, 'department_owner_id');
     }
 
+    public function serviceCommitments(): HasMany
+    {
+        return $this->hasMany(ServiceCommitment::class, 'provider_department_id');
+    }
+
     public function assetLocations(): HasMany
     {
         return $this->hasMany(AssetLocation::class);

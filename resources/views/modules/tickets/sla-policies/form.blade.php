@@ -58,6 +58,45 @@
                 @enderror
             </div>
 
+            <div class="col-md-4">
+                <input type="hidden" name="escalate_on_warning" value="0">
+                <div class="form-check mt-2">
+                    <input class="form-check-input" type="checkbox" id="escalate_on_warning" name="escalate_on_warning" value="1"
+                        @checked((bool) old('escalate_on_warning', $slaPolicy->escalate_on_warning ?? false))>
+                    <label class="form-check-label" for="escalate_on_warning">Escalate on 80% warning</label>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <input type="hidden" name="escalate_on_breach" value="0">
+                <div class="form-check mt-2">
+                    <input class="form-check-input" type="checkbox" id="escalate_on_breach" name="escalate_on_breach" value="1"
+                        @checked((bool) old('escalate_on_breach', $slaPolicy->escalate_on_breach ?? true))>
+                    <label class="form-check-label" for="escalate_on_breach">Escalate on breach</label>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <label for="escalation_role_code" class="form-label">Escalation Role</label>
+                <input type="text" id="escalation_role_code" name="escalation_role_code"
+                    class="form-control @error('escalation_role_code') is-invalid @enderror"
+                    value="{{ old('escalation_role_code', $slaPolicy->escalation_role_code) }}"
+                    placeholder="supervisor">
+                @error('escalation_role_code')
+                    <div class="invalid-feedback">{{ $message }}</div>
+                @enderror
+            </div>
+
+            <div class="col-12">
+                <label for="escalation_note" class="form-label">Escalation Note</label>
+                <input type="text" id="escalation_note" name="escalation_note"
+                    class="form-control @error('escalation_note') is-invalid @enderror"
+                    value="{{ old('escalation_note', $slaPolicy->escalation_note) }}">
+                @error('escalation_note')
+                    <div class="invalid-feedback">{{ $message }}</div>
+                @enderror
+            </div>
+
             <div class="col-12">
                 <input type="hidden" name="is_active" value="0">
                 <div class="form-check">

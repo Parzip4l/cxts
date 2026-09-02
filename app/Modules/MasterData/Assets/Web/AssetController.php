@@ -49,6 +49,7 @@ class AssetController extends Controller
             'department_owner_id' => $request->input('department_owner_id'),
             'vendor_id' => $request->input('vendor_id'),
             'criticality' => $request->input('criticality'),
+            'ci_type' => $request->input('ci_type'),
         ];
 
         if ($selectedLocationViewId > 0) {
@@ -57,6 +58,10 @@ class AssetController extends Controller
 
         if ($request->has('is_active') && $request->input('is_active') !== '') {
             $filters['is_active'] = (bool) $request->input('is_active');
+        }
+
+        if ($request->has('is_configuration_item') && $request->input('is_configuration_item') !== '') {
+            $filters['is_configuration_item'] = (bool) $request->input('is_configuration_item');
         }
 
         $assets = $this->assetService->paginate($filters);
@@ -77,6 +82,8 @@ class AssetController extends Controller
             'departmentOptions' => Department::query()->orderBy('name')->get(['id', 'name']),
             'vendorOptions' => Vendor::query()->orderBy('name')->get(['id', 'name']),
             'criticalityOptions' => Asset::criticalityOptions(),
+            'ciTypeOptions' => Asset::ciTypeOptions(),
+            'ciLifecycleOptions' => Asset::ciLifecycleOptions(),
             'locationViews' => $locationViews,
             'selectedLocationViewId' => $selectedLocationViewId,
             'locationViewCounts' => $locationViewCounts,
@@ -93,7 +100,10 @@ class AssetController extends Controller
             'departmentOptions' => Department::query()->orderBy('name')->get(['id', 'name']),
             'vendorOptions' => Vendor::query()->orderBy('name')->get(['id', 'name']),
             'locationOptions' => AssetLocation::query()->orderBy('name')->get(['id', 'name']),
+            'assetOptions' => Asset::query()->orderBy('name')->get(['id', 'code', 'name']),
             'criticalityOptions' => Asset::criticalityOptions(),
+            'ciTypeOptions' => Asset::ciTypeOptions(),
+            'ciLifecycleOptions' => Asset::ciLifecycleOptions(),
             'action' => route('master-data.assets.store'),
             'method' => 'POST',
             'pageTitle' => 'Create Asset',
@@ -112,14 +122,17 @@ class AssetController extends Controller
     public function edit(Asset $asset): View
     {
         return view('modules.master-data.assets.form', [
-            'asset' => $asset,
+            'asset' => $asset->load(['dependsOnRelationships.relatedAsset:id,code,name', 'supportsRelationships.relatedAsset:id,code,name']),
             'categoryOptions' => AssetCategory::query()->orderBy('name')->get(['id', 'name']),
             'statusOptions' => AssetStatus::query()->orderBy('name')->get(['id', 'name']),
             'serviceOptions' => ServiceCatalog::query()->orderBy('name')->get(['id', 'name']),
             'departmentOptions' => Department::query()->orderBy('name')->get(['id', 'name']),
             'vendorOptions' => Vendor::query()->orderBy('name')->get(['id', 'name']),
             'locationOptions' => AssetLocation::query()->orderBy('name')->get(['id', 'name']),
+            'assetOptions' => Asset::query()->whereKeyNot($asset->id)->orderBy('name')->get(['id', 'code', 'name']),
             'criticalityOptions' => Asset::criticalityOptions(),
+            'ciTypeOptions' => Asset::ciTypeOptions(),
+            'ciLifecycleOptions' => Asset::ciLifecycleOptions(),
             'action' => route('master-data.assets.update', $asset),
             'method' => 'PUT',
             'pageTitle' => 'Edit Asset',

@@ -4,6 +4,7 @@ namespace App\Services\SLA;
 
 use App\Events\SlaBreached;
 use App\Events\SlaWarningTriggered;
+use App\Models\SlaEvent;
 use App\Models\Ticket;
 use App\Models\TicketActivity;
 use App\Models\User;
@@ -93,12 +94,29 @@ class SLATrackingService
         }
 
         if ($ticketUpdates !== []) {
+            $oldSlaStatus = $ticket->sla_status;
             if ($actor !== null) {
                 $ticketUpdates['updated_by_id'] = $actor->id;
             }
 
             $ticket->update($ticketUpdates);
             $ticket->refresh();
+
+            if (array_key_exists('sla_status', $ticketUpdates) && $oldSlaStatus !== $ticket->sla_status) {
+                $this->recordSlaEvent(
+                    ticket: $ticket,
+                    actor: $actor,
+                    eventType: SlaEvent::TYPE_STATE_CHANGED,
+                    target: 'overall',
+                    eventAt: $referenceAt,
+                    metadata: [
+                        'old_sla_status' => $oldSlaStatus,
+                        'new_sla_status' => $ticket->sla_status,
+                    ],
+                    oldSlaStatus: $oldSlaStatus,
+                    newSlaStatus: $ticket->sla_status,
+                );
+            }
         }
 
         if ($responseState['warning_at'] !== null) {
@@ -307,6 +325,28 @@ class SLATrackingService
             ],
         ]);
 
+        $this->recordSlaEvent(
+            ticket: $ticket,
+            actor: $actor,
+            eventType: SlaEvent::TYPE_WARNING,
+            target: $target,
+            eventAt: $triggeredAt,
+            dueAt: $dueAt,
+            thresholdPercentage: $thresholdPercentage,
+            metadata: [
+                'activity_type' => $activityType,
+            ],
+        );
+
+        $this->recordEscalationIfNeeded(
+            ticket: $ticket,
+            actor: $actor,
+            sourceEventType: SlaEvent::TYPE_WARNING,
+            target: $target,
+            eventAt: $triggeredAt,
+            dueAt: $dueAt,
+        );
+
         event(new SlaWarningTriggered($ticket->fresh(), $target, $thresholdPercentage, $triggeredAt));
     }
 
@@ -335,7 +375,103 @@ class SLATrackingService
             ],
         ]);
 
+        $this->recordSlaEvent(
+            ticket: $ticket,
+            actor: $actor,
+            eventType: SlaEvent::TYPE_BREACH,
+            target: $target,
+            eventAt: $breachedAt,
+            dueAt: $dueAt,
+            metadata: [
+                'activity_type' => $activityType,
+            ],
+        );
+
+        $this->recordEscalationIfNeeded(
+            ticket: $ticket,
+            actor: $actor,
+            sourceEventType: SlaEvent::TYPE_BREACH,
+            target: $target,
+            eventAt: $breachedAt,
+            dueAt: $dueAt,
+        );
+
         event(new SlaBreached($ticket->fresh(), $target, $breachedAt));
+    }
+
+    private function recordEscalationIfNeeded(
+        Ticket $ticket,
+        ?User $actor,
+        string $sourceEventType,
+        string $target,
+        CarbonImmutable $eventAt,
+        ?CarbonImmutable $dueAt,
+    ): void {
+        $policy = $ticket->slaPolicy;
+
+        if ($policy === null && $ticket->sla_policy_id !== null) {
+            $policy = $ticket->slaPolicy()->first();
+        }
+
+        if ($policy === null) {
+            return;
+        }
+
+        $enabled = $sourceEventType === SlaEvent::TYPE_WARNING
+            ? (bool) $policy->escalate_on_warning
+            : (bool) $policy->escalate_on_breach;
+
+        if (! $enabled) {
+            return;
+        }
+
+        $this->recordSlaEvent(
+            ticket: $ticket,
+            actor: $actor,
+            eventType: SlaEvent::TYPE_ESCALATION,
+            target: $target.'_'.$sourceEventType,
+            eventAt: $eventAt,
+            dueAt: $dueAt,
+            escalationRoleCode: $policy->escalation_role_code,
+            metadata: [
+                'source_event_type' => $sourceEventType,
+                'target' => $target,
+                'escalation_note' => $policy->escalation_note,
+            ],
+        );
+    }
+
+    private function recordSlaEvent(
+        Ticket $ticket,
+        ?User $actor,
+        string $eventType,
+        ?string $target,
+        CarbonImmutable $eventAt,
+        ?CarbonImmutable $dueAt = null,
+        ?int $thresholdPercentage = null,
+        array $metadata = [],
+        ?string $oldSlaStatus = null,
+        ?string $newSlaStatus = null,
+        ?string $escalationRoleCode = null,
+    ): void {
+        SlaEvent::query()->firstOrCreate(
+            [
+                'ticket_id' => $ticket->id,
+                'event_type' => $eventType,
+                'target' => $target,
+            ],
+            [
+                'sla_policy_id' => $ticket->sla_policy_id,
+                'event_at' => $eventAt,
+                'due_at' => $dueAt,
+                'threshold_percentage' => $thresholdPercentage,
+                'old_sla_status' => $oldSlaStatus,
+                'new_sla_status' => $newSlaStatus,
+                'escalation_role_code' => $escalationRoleCode,
+                'actor_user_id' => $actor?->id,
+                'metadata' => $metadata,
+            ]
+        );
     }
 
     private function activityExists(Ticket $ticket, string $activityType): bool

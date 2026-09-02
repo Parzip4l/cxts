@@ -7,6 +7,14 @@
     $selectedEngineerSkillIds = collect(old('engineer_skill_ids', $service->relationLoaded('engineerSkills') ? $service->engineerSkills->pluck('id')->all() : $service->engineerSkills()->pluck('engineer_skills.id')->all()))
         ->map(fn ($value) => (string) $value)
         ->all();
+    $requestFormSchema = old('request_form_schema');
+    if ($requestFormSchema === null && $service->request_form_schema !== null) {
+        $requestFormSchema = json_encode($service->request_form_schema, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+    }
+    $defaultApprovalValue = old('default_request_approval_required');
+    if ($defaultApprovalValue === null && $service->default_request_approval_required !== null) {
+        $defaultApprovalValue = $service->default_request_approval_required ? '1' : '0';
+    }
 @endphp
 
 <div class="card">
@@ -136,6 +144,75 @@
                 <textarea id="description" name="description" rows="4"
                     class="form-control @error('description') is-invalid @enderror">{{ old('description', $service->description) }}</textarea>
                 @error('description')
+                    <div class="invalid-feedback">{{ $message }}</div>
+                @enderror
+            </div>
+
+            <div class="col-12">
+                <hr class="my-2">
+                <h5 class="mb-2">Service Request Defaults</h5>
+            </div>
+
+            <div class="col-md-4">
+                <input type="hidden" name="is_requestable" value="0">
+                <div class="form-check mt-2">
+                    <input class="form-check-input @error('is_requestable') is-invalid @enderror" type="checkbox"
+                        id="is_requestable" name="is_requestable" value="1"
+                        @checked((bool) old('is_requestable', $service->is_requestable ?? true))>
+                    <label class="form-check-label" for="is_requestable">
+                        Requestable by requester
+                    </label>
+                    @error('is_requestable')
+                        <div class="invalid-feedback">{{ $message }}</div>
+                    @enderror
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <label for="default_request_approval_required" class="form-label">Default Approval</label>
+                <select id="default_request_approval_required" name="default_request_approval_required"
+                    class="form-select @error('default_request_approval_required') is-invalid @enderror">
+                    <option value="" @selected($defaultApprovalValue === null || $defaultApprovalValue === '')>Inherit ticket category policy</option>
+                    <option value="1" @selected((string) $defaultApprovalValue === '1')>Approval required</option>
+                    <option value="0" @selected((string) $defaultApprovalValue === '0')>No approval required</option>
+                </select>
+                @error('default_request_approval_required')
+                    <div class="invalid-feedback">{{ $message }}</div>
+                @enderror
+            </div>
+
+            <div class="col-md-4">
+                <label for="default_request_sla_policy_id" class="form-label">Default Request SLA</label>
+                <select id="default_request_sla_policy_id" name="default_request_sla_policy_id"
+                    class="form-select @error('default_request_sla_policy_id') is-invalid @enderror">
+                    <option value="">- Use SLA assignment rule -</option>
+                    @foreach ($slaPolicyOptions as $option)
+                        <option value="{{ $option->id }}" @selected((string) old('default_request_sla_policy_id', $service->default_request_sla_policy_id) === (string) $option->id)>
+                            {{ $option->name }}
+                        </option>
+                    @endforeach
+                </select>
+                @error('default_request_sla_policy_id')
+                    <div class="invalid-feedback">{{ $message }}</div>
+                @enderror
+            </div>
+
+            <div class="col-md-6">
+                <label for="fulfillment_team_name" class="form-label">Fulfillment Team</label>
+                <input type="text" id="fulfillment_team_name" name="fulfillment_team_name"
+                    class="form-control @error('fulfillment_team_name') is-invalid @enderror"
+                    value="{{ old('fulfillment_team_name', $service->fulfillment_team_name) }}">
+                @error('fulfillment_team_name')
+                    <div class="invalid-feedback">{{ $message }}</div>
+                @enderror
+            </div>
+
+            <div class="col-md-6">
+                <label for="request_form_schema" class="form-label">Request Form Schema JSON</label>
+                <textarea id="request_form_schema" name="request_form_schema" rows="3"
+                    class="form-control font-monospace @error('request_form_schema') is-invalid @enderror"
+                    placeholder='[{"name":"employee_id","label":"Employee ID","type":"text"}]'>{{ $requestFormSchema }}</textarea>
+                @error('request_form_schema')
                     <div class="invalid-feedback">{{ $message }}</div>
                 @enderror
             </div>

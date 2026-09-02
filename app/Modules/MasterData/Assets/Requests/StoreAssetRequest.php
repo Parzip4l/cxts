@@ -29,9 +29,38 @@ class StoreAssetRequest extends FormRequest
             'install_date' => ['nullable', 'date'],
             'warranty_end_date' => ['nullable', 'date', 'after_or_equal:install_date'],
             'criticality' => ['required', Rule::in(Asset::criticalityOptions())],
+            'is_configuration_item' => ['nullable', 'boolean'],
+            'ci_type' => ['nullable', 'string', Rule::in(array_keys(Asset::ciTypeOptions()))],
+            'ci_lifecycle_state' => ['nullable', 'string', Rule::in(array_keys(Asset::ciLifecycleOptions()))],
+            'ci_governance_note' => ['nullable', 'string', 'max:2000'],
             'asset_status_id' => ['nullable', 'integer', Rule::exists('asset_statuses', 'id')],
+            'depends_on_asset_ids' => ['nullable', 'array'],
+            'depends_on_asset_ids.*' => ['integer', 'distinct', Rule::exists('assets', 'id')],
+            'supports_asset_ids' => ['nullable', 'array'],
+            'supports_asset_ids.*' => ['integer', 'distinct', Rule::exists('assets', 'id')],
             'notes' => ['nullable', 'string'],
             'is_active' => ['nullable', 'boolean'],
         ];
+    }
+
+    public function withValidator($validator): void
+    {
+        $validator->after(function ($validator): void {
+            if (! $this->boolean('is_configuration_item')) {
+                return;
+            }
+
+            if (blank($this->input('ci_type'))) {
+                $validator->errors()->add('ci_type', 'CI type is required when asset is marked as Configuration Item.');
+            }
+
+            $hasServiceOrRelationship = filled($this->input('service_id'))
+                || collect($this->input('depends_on_asset_ids', []))->filter()->isNotEmpty()
+                || collect($this->input('supports_asset_ids', []))->filter()->isNotEmpty();
+
+            if (! $hasServiceOrRelationship) {
+                $validator->errors()->add('service_id', 'Configuration Item should be linked to a service or CMDB relationship.');
+            }
+        });
     }
 }

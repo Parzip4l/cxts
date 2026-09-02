@@ -34,7 +34,7 @@ class SlaPolicyController extends Controller
 
     public function store(StoreSlaPolicyRequest $request): SlaPolicyResource
     {
-        return new SlaPolicyResource($this->slaPolicyService->create($request->validated()));
+        return new SlaPolicyResource($this->slaPolicyService->create($request->validated(), $request->user()));
     }
 
     public function show(SlaPolicy $slaPolicy): SlaPolicyResource
@@ -44,12 +44,12 @@ class SlaPolicyController extends Controller
 
     public function update(UpdateSlaPolicyRequest $request, SlaPolicy $slaPolicy): SlaPolicyResource
     {
-        return new SlaPolicyResource($this->slaPolicyService->update($slaPolicy, $request->validated()));
+        return new SlaPolicyResource($this->slaPolicyService->update($slaPolicy, $request->validated(), $request->user()));
     }
 
     public function destroy(SlaPolicy $slaPolicy): JsonResponse
     {
-        $this->slaPolicyService->delete($slaPolicy);
+        $this->slaPolicyService->delete($slaPolicy, request()->user());
 
         return response()->json(['message' => 'SLA policy deleted.']);
     }

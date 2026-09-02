@@ -12,6 +12,25 @@ class Ticket extends Model
 {
     use HasFactory;
 
+    public const PROCESS_TYPE_INCIDENT = 'incident';
+    public const PROCESS_TYPE_SERVICE_REQUEST = 'service_request';
+    public const PROCESS_TYPE_CHANGE_REQUEST = 'change_request';
+
+    public const DETECTION_SOURCE_USER_REPORT = 'user_report';
+    public const DETECTION_SOURCE_SERVICE_DESK = 'service_desk';
+    public const DETECTION_SOURCE_MONITORING = 'monitoring';
+    public const DETECTION_SOURCE_INSPECTION = 'inspection';
+
+    public const RESOLUTION_CODE_FIXED = 'fixed';
+    public const RESOLUTION_CODE_WORKAROUND = 'workaround';
+    public const RESOLUTION_CODE_DUPLICATE = 'duplicate';
+    public const RESOLUTION_CODE_NO_FAULT_FOUND = 'no_fault_found';
+    public const RESOLUTION_CODE_VENDOR_ESCALATED = 'vendor_escalated';
+
+    public const IMPACT_LOW = 'low';
+    public const IMPACT_MEDIUM = 'medium';
+    public const IMPACT_HIGH = 'high';
+
     public const SLA_STATUS_ON_TIME = 'on_time';
     public const SLA_STATUS_BREACHED = 'breached';
     public const APPROVAL_STATUS_NOT_REQUIRED = 'not_required';
@@ -23,6 +42,21 @@ class Ticket extends Model
         'ticket_number',
         'title',
         'description',
+        'process_type',
+        'incident_detection_source',
+        'is_major_incident',
+        'affected_users_count',
+        'service_impact_note',
+        'incident_resolution_code',
+        'change_reason',
+        'change_risk_level',
+        'change_planned_start_at',
+        'change_planned_end_at',
+        'change_rollback_plan',
+        'change_affected_scope',
+        'change_review_result',
+        'change_review_notes',
+        'request_form_payload',
         'requester_id',
         'requester_department_id',
         'ticket_category_id',
@@ -77,6 +111,8 @@ class Ticket extends Model
     protected $casts = [
         'requires_approval' => 'boolean',
         'allow_direct_assignment' => 'boolean',
+        'is_major_incident' => 'boolean',
+        'affected_users_count' => 'integer',
         'approval_requested_at' => 'datetime',
         'approved_at' => 'datetime',
         'rejected_at' => 'datetime',
@@ -86,6 +122,9 @@ class Ticket extends Model
         'responded_at' => 'datetime',
         'breached_response_at' => 'datetime',
         'resolution_due_at' => 'datetime',
+        'change_planned_start_at' => 'datetime',
+        'change_planned_end_at' => 'datetime',
+        'request_form_payload' => 'array',
         'started_at' => 'datetime',
         'paused_at' => 'datetime',
         'resolved_at' => 'datetime',
@@ -94,6 +133,142 @@ class Ticket extends Model
         'closed_at' => 'datetime',
         'last_status_changed_at' => 'datetime',
     ];
+
+    public static function processTypeOptions(): array
+    {
+        return [
+            self::PROCESS_TYPE_INCIDENT => 'Incident',
+            self::PROCESS_TYPE_SERVICE_REQUEST => 'Service Request',
+            self::PROCESS_TYPE_CHANGE_REQUEST => 'Change Request',
+        ];
+    }
+
+    public static function normalizeProcessType(?string $processType): string
+    {
+        $processType = strtolower(trim((string) $processType));
+
+        if ($processType === 'request') {
+            $processType = self::PROCESS_TYPE_SERVICE_REQUEST;
+        }
+
+        if ($processType === 'change') {
+            $processType = self::PROCESS_TYPE_CHANGE_REQUEST;
+        }
+
+        return array_key_exists($processType, self::processTypeOptions())
+            ? $processType
+            : self::PROCESS_TYPE_INCIDENT;
+    }
+
+    public static function detectionSourceOptions(): array
+    {
+        return [
+            self::DETECTION_SOURCE_USER_REPORT => 'User Report',
+            self::DETECTION_SOURCE_SERVICE_DESK => 'Service Desk',
+            self::DETECTION_SOURCE_MONITORING => 'Monitoring',
+            self::DETECTION_SOURCE_INSPECTION => 'Inspection',
+        ];
+    }
+
+    public static function resolutionCodeOptions(): array
+    {
+        return [
+            self::RESOLUTION_CODE_FIXED => 'Fixed',
+            self::RESOLUTION_CODE_WORKAROUND => 'Workaround',
+            self::RESOLUTION_CODE_DUPLICATE => 'Duplicate',
+            self::RESOLUTION_CODE_NO_FAULT_FOUND => 'No Fault Found',
+            self::RESOLUTION_CODE_VENDOR_ESCALATED => 'Vendor Escalated',
+        ];
+    }
+
+    public static function impactUrgencyOptions(): array
+    {
+        return [
+            self::IMPACT_LOW => 'Low',
+            self::IMPACT_MEDIUM => 'Medium',
+            self::IMPACT_HIGH => 'High',
+        ];
+    }
+
+    public static function priorityCodeForImpactUrgency(?string $impact, ?string $urgency): string
+    {
+        $impact = strtolower(trim((string) $impact)) ?: self::IMPACT_MEDIUM;
+        $urgency = strtolower(trim((string) $urgency)) ?: self::IMPACT_MEDIUM;
+
+        if ($impact === self::IMPACT_HIGH && $urgency === self::IMPACT_HIGH) {
+            return 'P1';
+        }
+
+        if ($impact === self::IMPACT_HIGH || $urgency === self::IMPACT_HIGH) {
+            return 'P2';
+        }
+
+        if ($impact === self::IMPACT_LOW && $urgency === self::IMPACT_LOW) {
+            return 'P4';
+        }
+
+        return 'P3';
+    }
+
+    public static function incidentLifecycleOptions(): array
+    {
+        return [
+            'NEW' => 'New',
+            'PENDING_APPROVAL' => 'Pending Approval',
+            'ASSIGNED' => 'Assigned',
+            'IN_PROGRESS' => 'In Progress',
+            'PENDING_CUSTOMER' => 'Pending Customer',
+            'COMPLETED' => 'Resolved / Completed',
+            'CLOSED' => 'Closed',
+            'REOPENED' => 'Reopened',
+            'CANCELLED' => 'Cancelled',
+            'REJECTED' => 'Rejected',
+        ];
+    }
+
+    public static function serviceRequestLifecycleOptions(): array
+    {
+        return [
+            'NEW' => 'Submitted',
+            'PENDING_APPROVAL' => 'Pending Approval',
+            'REJECTED' => 'Rejected',
+            'ASSIGNED' => 'Fulfillment Assigned',
+            'IN_PROGRESS' => 'Fulfillment In Progress',
+            'PENDING_CUSTOMER' => 'Waiting Requester',
+            'COMPLETED' => 'Fulfilled',
+            'CLOSED' => 'Closed',
+            'CANCELLED' => 'Cancelled',
+        ];
+    }
+
+    public static function changeRiskOptions(): array
+    {
+        return [
+            'low' => 'Low',
+            'medium' => 'Medium',
+            'high' => 'High',
+        ];
+    }
+
+    public static function changeReviewResultOptions(): array
+    {
+        return [
+            'successful' => 'Successful',
+            'successful_with_issue' => 'Successful With Issue',
+            'failed' => 'Failed',
+            'rolled_back' => 'Rolled Back',
+        ];
+    }
+
+    public function changeRiskLabel(): ?string
+    {
+        return self::changeRiskOptions()[$this->change_risk_level] ?? null;
+    }
+
+    public function changeReviewResultLabel(): ?string
+    {
+        return self::changeReviewResultOptions()[$this->change_review_result] ?? null;
+    }
 
     public function requester(): BelongsTo
     {
@@ -165,6 +340,21 @@ class Ticket extends Model
         return $this->belongsToMany(User::class, 'ticket_engineer_assignments', 'ticket_id', 'engineer_id')
             ->withPivot(['assigned_by_id', 'team_name', 'score_share', 'assigned_at'])
             ->withTimestamps();
+    }
+
+    public function problems(): BelongsToMany
+    {
+        return $this->belongsToMany(Problem::class, 'problem_ticket')->withTimestamps();
+    }
+
+    public function knowledgeArticles(): BelongsToMany
+    {
+        return $this->belongsToMany(KnowledgeArticle::class, 'knowledge_article_ticket')->withTimestamps();
+    }
+
+    public function slaEvents(): HasMany
+    {
+        return $this->hasMany(SlaEvent::class);
     }
 
     public function engineerAssignments(): HasMany
@@ -272,6 +462,24 @@ class Ticket extends Model
             self::APPROVAL_STATUS_REJECTED => 'Rejected',
             default => 'Not Required',
         };
+    }
+
+    public function processTypeLabel(): string
+    {
+        return self::processTypeOptions()[$this->process_type] ?? str($this->process_type ?? self::PROCESS_TYPE_INCIDENT)
+            ->replace('_', ' ')
+            ->title()
+            ->toString();
+    }
+
+    public function incidentDetectionSourceLabel(): string
+    {
+        return self::detectionSourceOptions()[$this->incident_detection_source] ?? '-';
+    }
+
+    public function incidentResolutionCodeLabel(): string
+    {
+        return self::resolutionCodeOptions()[$this->incident_resolution_code] ?? '-';
     }
 
     public function flowPolicySourceLabel(): string

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Department;
 use App\Models\EngineerSkill;
 use App\Models\ServiceCatalog;
+use App\Models\SlaPolicy;
 use App\Models\User;
 use App\Models\Vendor;
 use App\Modules\MasterData\Services\Requests\StoreServiceCatalogRequest;
@@ -33,6 +34,10 @@ class ServiceCatalogController extends Controller
             $filters['is_active'] = (bool) $request->input('is_active');
         }
 
+        if ($request->has('is_requestable') && $request->input('is_requestable') !== '') {
+            $filters['is_requestable'] = (bool) $request->input('is_requestable');
+        }
+
         $services = $this->serviceCatalogService->paginate($filters);
 
         return view('modules.master-data.services.index', [
@@ -49,6 +54,7 @@ class ServiceCatalogController extends Controller
             'departmentOptions' => Department::query()->orderBy('name')->get(['id', 'name']),
             'vendorOptions' => Vendor::query()->orderBy('name')->get(['id', 'name']),
             'managerOptions' => User::query()->orderBy('name')->get(['id', 'name']),
+            'slaPolicyOptions' => SlaPolicy::query()->where('is_active', true)->orderBy('name')->get(['id', 'name']),
             'engineerSkillOptions' => EngineerSkill::query()->where('is_active', true)->orderBy('name')->get(['id', 'name']),
             'ownershipOptions' => ServiceCatalog::ownershipOptions(),
             'action' => route('master-data.services.store'),
@@ -73,6 +79,7 @@ class ServiceCatalogController extends Controller
             'departmentOptions' => Department::query()->orderBy('name')->get(['id', 'name']),
             'vendorOptions' => Vendor::query()->orderBy('name')->get(['id', 'name']),
             'managerOptions' => User::query()->orderBy('name')->get(['id', 'name']),
+            'slaPolicyOptions' => SlaPolicy::query()->where('is_active', true)->orderBy('name')->get(['id', 'name']),
             'engineerSkillOptions' => EngineerSkill::query()->where('is_active', true)->orderBy('name')->get(['id', 'name']),
             'ownershipOptions' => ServiceCatalog::ownershipOptions(),
             'action' => route('master-data.services.update', $service),

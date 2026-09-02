@@ -52,6 +52,23 @@
                     <option value="0" @selected(($filters['is_active'] ?? null) === false)>Inactive</option>
                 </select>
             </div>
+            <div class="col-md-2">
+                <select name="is_configuration_item" class="form-select">
+                    <option value="">All asset/CI</option>
+                    <option value="1" @selected(($filters['is_configuration_item'] ?? null) === true)>CI only</option>
+                    <option value="0" @selected(($filters['is_configuration_item'] ?? null) === false)>Asset only</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select name="ci_type" class="form-select">
+                    <option value="">All CI type</option>
+                    @foreach ($ciTypeOptions as $ciTypeCode => $ciTypeLabel)
+                        <option value="{{ $ciTypeCode }}" @selected(($filters['ci_type'] ?? null) === $ciTypeCode)>
+                            {{ $ciTypeLabel }}
+                        </option>
+                    @endforeach
+                </select>
+            </div>
             <div class="col-md-2 text-md-end">
                 <button class="btn btn-outline-secondary" type="submit">Filter</button>
                 <a href="{{ route('master-data.assets.index') }}" class="btn btn-outline-light">Reset</a>
@@ -104,6 +121,8 @@
                                                         <th>Category</th>
                                                         <th>Service</th>
                                                         <th>Location</th>
+                                                        <th>CMDB</th>
+                                                        <th>Tickets</th>
                                                         <th>Status</th>
                                                         <th>Criticality</th>
                                                         <th class="text-end">Action</th>
@@ -117,6 +136,19 @@
                                                             <td>{{ $asset->category?->name ?? '-' }}</td>
                                                             <td>{{ $asset->service?->name ?? '-' }}</td>
                                                             <td>{{ $asset->location?->name ?? '-' }}</td>
+                                                            <td>
+                                                                @if ($asset->is_configuration_item)
+                                                                    <span class="badge bg-primary-subtle text-primary">CI</span>
+                                                                    @if ($asset->ci_type)
+                                                                        <span class="badge bg-light text-dark border">{{ \App\Models\Asset::ciTypeOptions()[$asset->ci_type] ?? $asset->ci_type }}</span>
+                                                                    @endif
+                                                                @else
+                                                                    <span class="badge bg-light text-muted border">Asset</span>
+                                                                @endif
+                                                                <span class="badge bg-light text-dark border">Depends {{ $asset->relationships->where('relationship_type', 'depends_on')->count() }}</span>
+                                                                <span class="badge bg-light text-dark border">Impacts {{ $asset->impactedByRelationships->count() }}</span>
+                                                            </td>
+                                                            <td>{{ number_format((int) ($asset->tickets_count ?? 0)) }}</td>
                                                             <td>{{ $asset->status?->name ?? '-' }}</td>
                                                             <td><span class="badge bg-info-subtle text-info">{{ ucfirst($asset->criticality) }}</span></td>
                                                             <td class="text-end">
@@ -135,7 +167,7 @@
                                                         </tr>
                                                     @empty
                                                         <tr>
-                                                            <td colspan="8" class="text-center text-muted py-4">No assets found.</td>
+                                                            <td colspan="10" class="text-center text-muted py-4">No assets found.</td>
                                                         </tr>
                                                     @endforelse
                                                 </tbody>

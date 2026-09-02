@@ -2,6 +2,7 @@
 
 namespace App\Modules\Tickets\PublicAccess\Requests;
 
+use App\Models\Ticket;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -20,12 +21,15 @@ class StorePublicTicketRequest extends FormRequest
             'requester_department_id' => ['required', 'integer', Rule::exists('departments', 'id')],
             'title' => ['required', 'string', 'max:200'],
             'description' => ['required', 'string'],
+            'process_type' => ['nullable', 'string', Rule::in(array_keys(Ticket::processTypeOptions()))],
             'ticket_type' => ['nullable', 'string', 'max:50'],
             'ticket_category_id' => ['required', 'integer', Rule::exists('ticket_categories', 'id')],
             'ticket_subcategory_id' => ['nullable', 'integer', Rule::exists('ticket_subcategories', 'id')],
             'ticket_detail_subcategory_id' => ['nullable', 'integer', Rule::exists('ticket_detail_subcategories', 'id')],
             'ticket_priority_id' => ['nullable', 'integer', Rule::exists('ticket_priorities', 'id')],
-            'service_id' => ['nullable', 'integer', Rule::exists('services', 'id')],
+            'service_id' => ['nullable', 'integer', Rule::exists('services', 'id')->where('is_active', true)->where('is_requestable', true)],
+            'request_form_payload' => ['nullable', 'array'],
+            'request_form_payload.*' => ['nullable', 'string', 'max:1000'],
             'asset_id' => ['nullable', 'integer', Rule::exists('assets', 'id')],
             'asset_location_id' => ['nullable', 'integer', Rule::exists('asset_locations', 'id')],
             'impact' => ['nullable', Rule::in(['low', 'medium', 'high'])],

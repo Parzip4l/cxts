@@ -16,10 +16,16 @@ class SlaPolicy extends Model
         'response_time_minutes',
         'resolution_time_minutes',
         'working_hours_id',
+        'escalate_on_warning',
+        'escalate_on_breach',
+        'escalation_role_code',
+        'escalation_note',
         'is_active',
     ];
 
     protected $casts = [
+        'escalate_on_warning' => 'boolean',
+        'escalate_on_breach' => 'boolean',
         'is_active' => 'boolean',
     ];
 
@@ -31,5 +37,15 @@ class SlaPolicy extends Model
     public function tickets(): HasMany
     {
         return $this->hasMany(Ticket::class);
+    }
+
+    public function slaEvents(): HasMany
+    {
+        return $this->hasMany(SlaEvent::class);
+    }
+
+    public function auditLogs(): HasMany
+    {
+        return $this->hasMany(SlaPolicyAuditLog::class);
     }
 }

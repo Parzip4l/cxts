@@ -16,9 +16,9 @@
         }
     }
 
-    $selectedPriorityLabel = optional($priorityOptions->firstWhere('id', old('ticket_priority_id', $defaultPriorityId)))->name ?? 'Medium';
+    $selectedPriorityLabel = optional($priorityOptions->firstWhere('id', old('ticket_priority_id')))->name ?? 'Auto from Impact/Urgency';
     $initialStep = 1;
-    if ($errors->hasAny(['title', 'ticket_category_id', 'ticket_subcategory_id', 'ticket_detail_subcategory_id', 'description'])) {
+    if ($errors->hasAny(['title', 'process_type', 'ticket_category_id', 'ticket_subcategory_id', 'ticket_detail_subcategory_id', 'description'])) {
         $initialStep = 2;
     }
     if ($errors->hasAny(['service_id', 'asset_id', 'asset_location_id', 'context_mode'])) {
@@ -52,7 +52,6 @@
 
                         <form method="POST" action="{{ route('public.tickets.store') }}" enctype="multipart/form-data" class="row g-4" id="public-ticket-form" data-initial-step="{{ $initialStep }}">
                             @csrf
-                            <input type="hidden" name="ticket_priority_id" value="{{ old('ticket_priority_id', $defaultPriorityId) }}">
                             <input type="hidden" name="impact" value="{{ old('impact', 'medium') }}">
                             <input type="hidden" name="urgency" value="{{ old('urgency', 'medium') }}">
                             <input type="hidden" id="asset_location_id" name="asset_location_id" value="{{ old('asset_location_id') }}">
@@ -138,7 +137,7 @@
                                     </div>
 
                                     <div class="row g-3">
-                                        <div class="col-md-8">
+                                        <div class="col-md-6">
                                             <label for="title" class="form-label">Issue Summary</label>
                                             <input type="text" id="title" name="title" class="form-control @error('title') is-invalid @enderror"
                                                 value="{{ old('title') }}" placeholder="Contoh: Printer ruang finance tidak bisa dipakai" required>
@@ -147,7 +146,21 @@
                                             @enderror
                                         </div>
 
-                                        <div class="col-md-4">
+                                        <div class="col-md-3">
+                                            <label for="process_type" class="form-label">Process</label>
+                                            <select id="process_type" name="process_type" class="form-select @error('process_type') is-invalid @enderror">
+                                                @foreach ($processTypeOptions as $processTypeCode => $processTypeLabel)
+                                                    <option value="{{ $processTypeCode }}" @selected((string) old('process_type', \App\Models\Ticket::PROCESS_TYPE_INCIDENT) === (string) $processTypeCode)>
+                                                        {{ $processTypeLabel }}
+                                                    </option>
+                                                @endforeach
+                                            </select>
+                                            @error('process_type')
+                                                <div class="invalid-feedback">{{ $message }}</div>
+                                            @enderror
+                                        </div>
+
+                                        <div class="col-md-3">
                                             <label for="ticket_category_id" class="form-label">Ticket Type</label>
                                             <select id="ticket_category_id" name="ticket_category_id"
                                                 class="form-select @error('ticket_category_id') is-invalid @enderror" required>
@@ -288,7 +301,11 @@
                                                 data-searchable-select data-search-placeholder="Search service">
                                                 <option value="">- Select Related Service -</option>
                                                 @foreach ($serviceOptions as $option)
-                                                    <option value="{{ $option->id }}" @selected((string) old('service_id') === (string) $option->id)>
+                                                    <option
+                                                        value="{{ $option->id }}"
+                                                        data-request-form-schema='@json($option->request_form_schema ?? [])'
+                                                        @selected((string) old('service_id') === (string) $option->id)
+                                                    >
                                                         {{ $option->name }}
                                                     </option>
                                                 @endforeach
@@ -358,6 +375,7 @@
                                     </div>
 
                                     <div id="public-ticket-context-smart-hint" class="alert alert-info border d-none mt-3 mb-0"></div>
+                                    <div id="public-ticket-request-form-fields" class="row g-3 mt-1 d-none"></div>
                                 </div>
                             </div>
 
@@ -404,6 +422,7 @@
         const assetModeLocationSelect = document.getElementById('public_asset_location_asset_mode');
         const locationModeSelect = document.getElementById('public_asset_location_location_mode');
         const smartHint = document.getElementById('public-ticket-context-smart-hint');
+        const requestFormFields = document.getElementById('public-ticket-request-form-fields');
         const stepPanels = Array.from(form.querySelectorAll('[data-step-panel]'));
         const stepTriggers = Array.from(form.querySelectorAll('[data-step-trigger]'));
         const prevButton = form.querySelector('[data-step-action="prev"]');
@@ -534,6 +553,78 @@
             smartHint.classList.toggle('d-none', !message);
         };
 
+        const parseServiceSchema = () => {
+            const selectedServiceOption = getOptionByValue(serviceSelect, serviceSelect?.value);
+            if (!selectedServiceOption?.dataset.requestFormSchema) {
+                return [];
+            }
+
+            try {
+                const schema = JSON.parse(selectedServiceOption.dataset.requestFormSchema);
+                return Array.isArray(schema) ? schema : [];
+            } catch (error) {
+                return [];
+            }
+        };
+
+        const renderRequestFormFields = () => {
+            if (!requestFormFields) {
+                return;
+            }
+
+            const activeMode = document.querySelector('input[name="context_mode"]:checked')?.value || 'none';
+            const schema = activeMode === 'service' && serviceSelect?.value ? parseServiceSchema() : [];
+
+            requestFormFields.innerHTML = '';
+            requestFormFields.classList.toggle('d-none', schema.length === 0);
+
+            schema.forEach((fieldSchema) => {
+                const name = String(fieldSchema.name || '').trim();
+                if (!name) {
+                    return;
+                }
+
+                const type = String(fieldSchema.type || 'text').toLowerCase();
+                const label = String(fieldSchema.label || name.replaceAll('_', ' '));
+                const wrapper = document.createElement('div');
+                wrapper.className = type === 'textarea' ? 'col-12' : 'col-md-6';
+
+                const labelElement = document.createElement('label');
+                labelElement.className = 'form-label text-capitalize';
+                labelElement.textContent = label;
+                wrapper.appendChild(labelElement);
+
+                let input;
+                if (type === 'textarea') {
+                    input = document.createElement('textarea');
+                    input.rows = 3;
+                    input.className = 'form-control';
+                } else if (type === 'select' && Array.isArray(fieldSchema.options)) {
+                    input = document.createElement('select');
+                    input.className = 'form-select';
+                    const blankOption = document.createElement('option');
+                    blankOption.value = '';
+                    blankOption.textContent = '- Select -';
+                    input.appendChild(blankOption);
+                    fieldSchema.options.forEach((optionValue) => {
+                        const option = document.createElement('option');
+                        option.value = String(optionValue);
+                        option.textContent = String(optionValue);
+                        input.appendChild(option);
+                    });
+                } else {
+                    input = document.createElement('input');
+                    input.type = ['number', 'date', 'email'].includes(type) ? type : 'text';
+                    input.className = 'form-control';
+                }
+
+                input.name = `request_form_payload[${name}]`;
+                input.required = fieldSchema.required === true;
+                wrapper.appendChild(input);
+                requestFormFields.appendChild(wrapper);
+            });
+        };
+
         const updateSmartContextHint = () => {
             const activeMode = document.querySelector('input[name="context_mode"]:checked')?.value || 'none';
 
@@ -636,6 +727,7 @@
 
             syncLocationValue();
             updateSmartContextHint();
+            renderRequestFormFields();
         };
 
         const fieldsForStep = (step) => {
@@ -710,7 +802,10 @@
         categorySelect?.addEventListener('change', toggleSubcategory);
         subcategorySelect?.addEventListener('change', toggleSubcategory);
         contextInputs.forEach((input) => input.addEventListener('change', syncContextPanels));
-        serviceSelect?.addEventListener('change', updateSmartContextHint);
+        serviceSelect?.addEventListener('change', () => {
+            updateSmartContextHint();
+            renderRequestFormFields();
+        });
         assetSelect?.addEventListener('change', updateSmartContextHint);
         assetModeLocationSelect?.addEventListener('change', syncLocationValue);
         assetModeLocationSelect?.addEventListener('change', updateSmartContextHint);
@@ -739,6 +834,7 @@
         toggleSubcategory();
         syncContextPanels();
         updateSmartContextHint();
+        renderRequestFormFields();
         showStep(currentStep);
     });
 </script>

@@ -32,6 +32,9 @@ class TicketController extends Controller
 
         $tickets = $this->ticketService->paginate([
             'search' => $request->input('search'),
+            'process_type' => $request->input('process_type'),
+            'incident_detection_source' => $request->input('incident_detection_source'),
+            'is_major_incident' => $request->input('is_major_incident'),
             'ticket_status_id' => $request->input('ticket_status_id'),
             'ticket_priority_id' => $request->input('ticket_priority_id'),
             'ticket_category_id' => $request->input('ticket_category_id'),
@@ -58,7 +61,7 @@ class TicketController extends Controller
             $payload['requester_department_id'] = $request->user()?->department_id;
         }
 
-        $payload['ticket_priority_id'] = $payload['ticket_priority_id'] ?? $this->resolveDefaultPriorityId();
+        $payload['process_type'] = Ticket::normalizeProcessType($payload['process_type'] ?? $payload['ticket_type'] ?? null);
         $payload['source'] = $payload['source'] ?? 'api';
         $payload['impact'] = $payload['impact'] ?? 'medium';
         $payload['urgency'] = $payload['urgency'] ?? 'medium';
@@ -112,6 +115,9 @@ class TicketController extends Controller
             'approvedBy:id,name',
             'rejectedBy:id,name',
             'assignmentReadyBy:id,name',
+            'knowledgeArticles:id,article_number,title,article_type,status,summary',
+            'slaEvents.slaPolicy:id,name',
+            'slaEvents.actor:id,name',
             'attachments',
             'attachments.uploadedBy:id,name',
         ]);

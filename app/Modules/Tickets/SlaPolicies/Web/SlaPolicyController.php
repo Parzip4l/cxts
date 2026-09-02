@@ -46,7 +46,7 @@ class SlaPolicyController extends Controller
 
     public function store(StoreSlaPolicyRequest $request): RedirectResponse
     {
-        $this->slaPolicyService->create($request->validated());
+        $this->slaPolicyService->create($request->validated(), $request->user());
 
         return redirect()
             ->route('master-data.sla-policies.index')
@@ -65,7 +65,7 @@ class SlaPolicyController extends Controller
 
     public function update(UpdateSlaPolicyRequest $request, SlaPolicy $slaPolicy): RedirectResponse
     {
-        $this->slaPolicyService->update($slaPolicy, $request->validated());
+        $this->slaPolicyService->update($slaPolicy, $request->validated(), $request->user());
 
         return redirect()
             ->route('master-data.sla-policies.index')
@@ -74,7 +74,7 @@ class SlaPolicyController extends Controller
 
     public function destroy(SlaPolicy $slaPolicy): RedirectResponse
     {
-        $this->slaPolicyService->delete($slaPolicy);
+        $this->slaPolicyService->delete($slaPolicy, request()->user());
 
         return redirect()
             ->route('master-data.sla-policies.index')

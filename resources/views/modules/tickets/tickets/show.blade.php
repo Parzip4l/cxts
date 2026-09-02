@@ -15,6 +15,8 @@
         ->map(fn ($id) => (string) $id)
         ->all();
     $statusCode = strtoupper((string) ($ticket->status?->code ?? ''));
+    $incidentLifecycleOptions = \App\Models\Ticket::incidentLifecycleOptions();
+    $serviceRequestLifecycleOptions = \App\Models\Ticket::serviceRequestLifecycleOptions();
     $approvalActivities = $ticket->activities->filter(fn ($activity) => in_array($activity->activity_type, ['ticket_approved', 'ticket_rejected', 'ticket_ready_for_assignment'], true))->values();
     $lifecycleActivities = $ticket->activities->filter(fn ($activity) => in_array($activity->activity_type, ['ticket_pending_customer', 'ticket_closed', 'ticket_reopened', 'ticket_cancelled'], true))->values();
     $strategyLabels = \App\Models\TicketCategory::approverStrategies();
@@ -188,6 +190,7 @@
                             <h4 class="mb-2">{{ $ticket->title }}</h4>
                             <div class="d-flex flex-wrap gap-2">
                                 <span class="badge bg-dark-subtle text-dark border">{{ $ticket->ticket_number }}</span>
+                                <span class="badge bg-primary-subtle text-primary">{{ $ticket->processTypeLabel() }}</span>
                                 <span class="badge {{ $ticketStatusBadgeClass($ticket->status?->code) }}">{{ $ticket->status?->name ?? '-' }}</span>
                                 <span class="badge {{ $priorityBadgeClass($ticket->priority?->name) }}">{{ $ticket->priority?->name ?? 'No Priority' }}</span>
                                 <span class="badge {{ $approvalStatusBadgeClass($ticket->approval_status) }}">{{ $ticket->approvalStatusLabel() }}</span>
@@ -203,6 +206,8 @@
                             @if ($canEditTicket)
                                 <div class="mt-3">
                                     <a href="{{ route('tickets.edit', $ticket) }}" class="btn btn-sm btn-outline-secondary">Edit Ticket</a>
+                                    <a href="{{ route('problems.create', ['ticket_id' => $ticket->id]) }}" class="btn btn-sm btn-outline-primary">Create Problem</a>
+                                    <a href="{{ route('knowledge-articles.create', ['ticket_id' => $ticket->id]) }}" class="btn btn-sm btn-outline-primary">Create Article</a>
                                 </div>
                             @endif
                         </div>
@@ -240,6 +245,13 @@
                     </div>
 
                     <div class="row g-3 mt-3">
+                        <div class="col-md-4">
+                            <div class="rounded-3 border bg-white p-3 h-100">
+                                <div class="small text-muted mb-1">Process Type</div>
+                                <div class="fw-semibold">{{ $ticket->processTypeLabel() }}</div>
+                                <div class="small text-muted">ITIL process classification</div>
+                            </div>
+                        </div>
                         <div class="col-md-4">
                             <div class="rounded-3 border bg-white p-3 h-100">
                                 <div class="small text-muted mb-1">Expected Approver</div>
@@ -334,6 +346,190 @@
                             </div>
                         </div>
                     </div>
+                </div>
+
+                <div class="rounded-3 border bg-light-subtle p-3 mb-4">
+                    <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-3">
+                        <div>
+                            <div class="small text-muted text-uppercase fw-semibold">SLA Events</div>
+                            <div class="small text-muted">Audit warning, breach, state change, dan escalation dari SLA monitor.</div>
+                        </div>
+                        <span class="badge bg-light text-muted border">{{ $ticket->slaEvents->count() }} event(s)</span>
+                    </div>
+                    @if ($ticket->slaEvents->isEmpty())
+                        <div class="text-muted">No SLA event recorded yet.</div>
+                    @else
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Event</th>
+                                        <th>Target</th>
+                                        <th>Due</th>
+                                        <th>At</th>
+                                        <th>Escalation</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach ($ticket->slaEvents->sortByDesc('event_at') as $slaEvent)
+                                        <tr>
+                                            <td>
+                                                <div class="fw-semibold">{{ str($slaEvent->event_type)->replace('_', ' ')->title() }}</div>
+                                                <div class="small text-muted">{{ $slaEvent->slaPolicy?->name ?? $ticket->sla_name_snapshot ?? '-' }}</div>
+                                            </td>
+                                            <td>{{ $slaEvent->target ?: '-' }}</td>
+                                            <td>{{ optional($slaEvent->due_at)->format('d M Y H:i') ?? '-' }}</td>
+                                            <td>{{ optional($slaEvent->event_at)->format('d M Y H:i') ?? '-' }}</td>
+                                            <td>{{ $slaEvent->escalation_role_code ?: '-' }}</td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                    @endif
+                </div>
+
+                <div class="row g-3 mb-4">
+                    <div class="col-lg-5">
+                        <div class="rounded-3 border p-3 h-100">
+                            <div class="small text-muted text-uppercase fw-semibold mb-3">
+                                {{ $ticket->process_type === \App\Models\Ticket::PROCESS_TYPE_SERVICE_REQUEST ? 'Request Fulfillment State' : 'Incident Lifecycle' }}
+                            </div>
+                            <div class="d-flex flex-column gap-2">
+                                @foreach ($ticket->process_type === \App\Models\Ticket::PROCESS_TYPE_SERVICE_REQUEST ? $serviceRequestLifecycleOptions : $incidentLifecycleOptions as $lifecycleCode => $lifecycleLabel)
+                                    @php
+                                        $isCurrentLifecycle = $statusCode === $lifecycleCode
+                                            || ($lifecycleCode === 'REOPENED' && $ticket->activities->contains('activity_type', 'ticket_reopened'));
+                                    @endphp
+                                    <div class="d-flex justify-content-between align-items-center gap-3">
+                                        <span class="{{ $isCurrentLifecycle ? 'fw-semibold text-dark' : 'text-muted' }}">{{ $lifecycleLabel }}</span>
+                                        <span class="badge {{ $isCurrentLifecycle ? 'bg-primary-subtle text-primary' : 'bg-light text-muted border' }}">
+                                            {{ $isCurrentLifecycle ? 'Active' : 'Available' }}
+                                        </span>
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-7">
+                        @if ($ticket->process_type === \App\Models\Ticket::PROCESS_TYPE_CHANGE_REQUEST)
+                            <div class="rounded-3 border bg-light-subtle p-3 h-100">
+                                <div class="small text-muted text-uppercase fw-semibold mb-3">Change Plan & PIR</div>
+                                <div class="row g-3">
+                                    <div class="col-md-4">
+                                        <div class="small text-muted mb-1">Risk Level</div>
+                                        <div class="fw-semibold">{{ $ticket->changeRiskLabel() ?? '-' }}</div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="small text-muted mb-1">Planned Start</div>
+                                        <div class="fw-semibold">{{ optional($ticket->change_planned_start_at)->format('d M Y H:i') ?? '-' }}</div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="small text-muted mb-1">Planned End</div>
+                                        <div class="fw-semibold">{{ optional($ticket->change_planned_end_at)->format('d M Y H:i') ?? '-' }}</div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="small text-muted mb-1">Change Reason</div>
+                                        <div class="fw-semibold">{{ $ticket->change_reason ?: '-' }}</div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="small text-muted mb-1">Affected Scope</div>
+                                        <div class="fw-semibold">{{ $ticket->change_affected_scope ?: '-' }}</div>
+                                    </div>
+                                    <div class="col-12">
+                                        <div class="small text-muted mb-1">Rollback Plan</div>
+                                        <div class="fw-semibold">{{ $ticket->change_rollback_plan ?: '-' }}</div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="small text-muted mb-1">PIR Result</div>
+                                        <div class="fw-semibold">{{ $ticket->changeReviewResultLabel() ?? '-' }}</div>
+                                    </div>
+                                    <div class="col-md-8">
+                                        <div class="small text-muted mb-1">PIR Notes</div>
+                                        <div class="fw-semibold">{{ $ticket->change_review_notes ?: '-' }}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        @else
+                            <div class="rounded-3 border bg-light-subtle p-3 h-100">
+                                <div class="small text-muted text-uppercase fw-semibold mb-3">Incident Triage</div>
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <div class="small text-muted mb-1">Detection Source</div>
+                                        <div class="fw-semibold">{{ $ticket->incidentDetectionSourceLabel() }}</div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="small text-muted mb-1">Resolution Code</div>
+                                        <div class="fw-semibold">{{ $ticket->incidentResolutionCodeLabel() }}</div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="small text-muted mb-1">Major Incident</div>
+                                        <div class="fw-semibold">{{ $ticket->is_major_incident ? 'Yes' : 'No' }}</div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="small text-muted mb-1">Affected Users</div>
+                                        <div class="fw-semibold">{{ $ticket->affected_users_count !== null ? number_format($ticket->affected_users_count) : '-' }}</div>
+                                    </div>
+                                    <div class="col-12">
+                                        <div class="small text-muted mb-1">Service Impact</div>
+                                        <div class="fw-semibold">{{ $ticket->service_impact_note ?: '-' }}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        @endif
+                    </div>
+                </div>
+
+                @if ($ticket->process_type === \App\Models\Ticket::PROCESS_TYPE_SERVICE_REQUEST && ! empty($ticket->request_form_payload))
+                    <div class="rounded-3 border bg-light-subtle p-3 mb-4">
+                        <div class="small text-muted text-uppercase fw-semibold mb-3">Request Form Answers</div>
+                        <div class="row g-3">
+                            @foreach ($ticket->request_form_payload as $fieldName => $fieldValue)
+                                <div class="col-md-6">
+                                    <div class="small text-muted mb-1">{{ str($fieldName)->replace('_', ' ')->title() }}</div>
+                                    <div class="fw-semibold">{{ filled($fieldValue) ? $fieldValue : '-' }}</div>
+                                </div>
+                            @endforeach
+                        </div>
+                    </div>
+                @endif
+
+                <div class="rounded-3 border bg-light-subtle p-3 mb-4">
+                    <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-3">
+                        <div>
+                            <div class="small text-muted text-uppercase fw-semibold">Knowledge Base</div>
+                            <div class="small text-muted">Manual suggestion for troubleshooting and known error reference.</div>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <a href="{{ route('knowledge-articles.index', ['search' => $ticket->title]) }}" class="btn btn-sm btn-outline-secondary">Search Knowledge</a>
+                            <a href="{{ route('knowledge-articles.create', ['ticket_id' => $ticket->id]) }}" class="btn btn-sm btn-outline-primary">Create Article</a>
+                        </div>
+                    </div>
+                    @if ($ticket->knowledgeArticles->isEmpty())
+                        <div class="text-muted">No linked knowledge article yet.</div>
+                    @else
+                        <div class="row g-2">
+                            @foreach ($ticket->knowledgeArticles as $article)
+                                <div class="col-md-6">
+                                    <div class="border rounded-3 p-3 h-100 bg-white">
+                                        <div class="d-flex justify-content-between align-items-start gap-2">
+                                            <div>
+                                                <div class="fw-semibold">{{ $article->article_number }}</div>
+                                                <div class="small text-muted">{{ $article->title }}</div>
+                                            </div>
+                                            <span class="badge {{ $article->status === \App\Models\KnowledgeArticle::STATUS_PUBLISHED ? 'bg-success-subtle text-success' : 'bg-light text-dark border' }}">
+                                                {{ \App\Models\KnowledgeArticle::statusOptions()[$article->status] ?? $article->status }}
+                                            </span>
+                                        </div>
+                                        @if ($article->summary)
+                                            <div class="small text-muted mt-2">{{ $article->summary }}</div>
+                                        @endif
+                                        <a href="{{ route('knowledge-articles.show', $article) }}" class="btn btn-sm btn-outline-primary mt-3">Open Article</a>
+                                    </div>
+                                </div>
+                            @endforeach
+                        </div>
+                    @endif
                 </div>
 
                 <div class="mb-4">

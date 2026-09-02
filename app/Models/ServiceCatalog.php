@@ -24,10 +24,18 @@ class ServiceCatalog extends Model
         'vendor_id',
         'service_manager_user_id',
         'is_active',
+        'is_requestable',
+        'default_request_approval_required',
+        'default_request_sla_policy_id',
+        'fulfillment_team_name',
+        'request_form_schema',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
+        'is_requestable' => 'boolean',
+        'default_request_approval_required' => 'boolean',
+        'request_form_schema' => 'array',
     ];
 
     public const OWNERSHIP_INTERNAL = 'internal';
@@ -58,9 +66,24 @@ class ServiceCatalog extends Model
         return $this->belongsTo(User::class, 'service_manager_user_id');
     }
 
+    public function defaultRequestSlaPolicy(): BelongsTo
+    {
+        return $this->belongsTo(SlaPolicy::class, 'default_request_sla_policy_id');
+    }
+
     public function assets(): HasMany
     {
         return $this->hasMany(Asset::class, 'service_id');
+    }
+
+    public function tickets(): HasMany
+    {
+        return $this->hasMany(Ticket::class, 'service_id');
+    }
+
+    public function serviceCommitments(): HasMany
+    {
+        return $this->hasMany(ServiceCommitment::class, 'service_id');
     }
 
     public function engineerSkills(): BelongsToMany

@@ -18,6 +18,10 @@ use App\Modules\Inspections\Inspections\Api\MyInspectionController;
 use App\Modules\Inspections\Results\Api\InspectionResultController;
 use App\Modules\Inspections\InspectionTemplates\Api\InspectionTemplateController;
 use App\Modules\Tickets\EngineerTasks\Api\EngineerTaskController;
+use App\Modules\Tickets\Knowledge\Api\KnowledgeArticleController;
+use App\Modules\Tickets\Monitoring\Api\MonitoringEventController;
+use App\Modules\Tickets\Problems\Api\ProblemController;
+use App\Modules\Tickets\ServiceCommitments\Api\ServiceCommitmentController;
 use App\Modules\Tickets\SlaPolicies\Api\SlaPolicyController;
 use App\Modules\Tickets\SlaPolicyAssignments\Api\SlaPolicyAssignmentController;
 use App\Modules\Tickets\TicketCategories\Api\TicketCategoryController;
@@ -90,6 +94,12 @@ Route::prefix('v1')->name('api.v1.')->group(function (): void {
         Route::post('/tickets/{ticket}/cancel', [TicketController::class, 'cancel'])->name('tickets.cancel');
         Route::post('/tickets/{ticket}/assign', [TicketController::class, 'assign'])->name('tickets.assign');
         Route::get('/tickets/{ticket}/attachments/{attachment}', [TicketController::class, 'showAttachment'])->name('tickets.attachments.show');
+        Route::apiResource('problems', ProblemController::class);
+        Route::apiResource('knowledge-articles', KnowledgeArticleController::class);
+        Route::apiResource('service-commitments', ServiceCommitmentController::class)->middleware('permission:sla.manage');
+        Route::post('/monitoring-events/{monitoring_event}/convert-to-incident', [MonitoringEventController::class, 'convert'])->name('monitoring-events.convert');
+        Route::post('/monitoring-events/{monitoring_event}/ignore', [MonitoringEventController::class, 'ignore'])->name('monitoring-events.ignore');
+        Route::apiResource('monitoring-events', MonitoringEventController::class)->only(['index', 'store', 'show']);
 
         Route::prefix('/mobile')->name('mobile.')->middleware('role:engineer,inspection_officer')->group(function (): void {
             Route::get('/notifications', [MobileNotificationController::class, 'index'])->name('notifications.index');
