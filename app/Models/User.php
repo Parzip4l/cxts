@@ -118,13 +118,20 @@ class User extends Authenticatable
             }
         }
 
-        $permissions = config('rbac.role_defaults.' . $this->role, []);
+        $permissions = config('rbac.role_defaults.'.$this->role, []);
 
         return array_values(array_unique(array_map('strval', $permissions)));
     }
 
     public function hasPermission(string $permission): bool
     {
+        // Super admins must retain full access even when a deployment has not
+        // populated the permission_role pivot table yet. This also matches the
+        // wildcard declared for this role in config/rbac.php.
+        if ($this->role === 'super_admin') {
+            return true;
+        }
+
         $permissions = $this->permissionList();
 
         return in_array('*', $permissions, true)
@@ -168,7 +175,7 @@ class User extends Authenticatable
         }
 
         if (str_starts_with($normalized, '0')) {
-            return '62' . substr($normalized, 1);
+            return '62'.substr($normalized, 1);
         }
 
         return $normalized;
@@ -182,7 +189,7 @@ class User extends Authenticatable
             return null;
         }
 
-        return 'https://wa.me/' . ltrim($phone, '+');
+        return 'https://wa.me/'.ltrim($phone, '+');
     }
 
     public function telUrl(): ?string
@@ -193,6 +200,6 @@ class User extends Authenticatable
             return null;
         }
 
-        return 'tel:' . $phone;
+        return 'tel:'.$phone;
     }
 }

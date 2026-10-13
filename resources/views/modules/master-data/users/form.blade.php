@@ -1,7 +1,7 @@
 @extends('layouts.vertical', ['subtitle' => $pageTitle])
 
 @section('content')
-@include('layouts.partials.page-title', ['title' => 'Master Data', 'subtitle' => $pageTitle])
+@include('layouts.partials.page-title', ['title' => 'User & Role Management', 'subtitle' => $pageTitle])
 
 @php
     $selectedRole = old('role', $userRecord->role ?: request('role'));
@@ -95,6 +95,7 @@
                 @error('role')
                     <div class="invalid-feedback">{{ $message }}</div>
                 @enderror
+                <div class="form-text">The selected role determines which menus and actions this user can access.</div>
             </div>
 
             <div class="col-md-6">

@@ -1,10 +1,21 @@
-@extends('layouts.vertical', ['subtitle' => 'Users'])
+@extends('layouts.vertical', ['subtitle' => 'User & Role Management'])
 
 @section('content')
-@include('layouts.partials.page-title', ['title' => 'Master Data', 'subtitle' => 'Users'])
+@include('layouts.partials.page-title', ['title' => 'Administration', 'subtitle' => 'User & Role Management'])
 
 <div class="card">
     <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-3">
+            <div>
+                <h5 class="mb-1">Users and role assignments</h5>
+                <p class="text-muted mb-0">Create application users and control their access by assigning an active role.</p>
+            </div>
+            <a href="{{ route('master-data.users.create') }}" class="btn btn-primary">
+                <iconify-icon icon="solar:user-plus-rounded-outline" class="me-1"></iconify-icon>
+                Add User
+            </a>
+        </div>
+
         @if (session('success'))
             <div class="alert alert-success">{{ session('success') }}</div>
         @endif
@@ -43,9 +54,6 @@
             </div>
             <div class="col-12 d-flex justify-content-between">
                 <a href="{{ route('master-data.users.index') }}" class="btn btn-outline-light">Reset</a>
-                <div class="d-flex gap-2">
-                    <a href="{{ route('master-data.users.create') }}" class="btn btn-primary">Add User</a>
-                </div>
             </div>
         </form>
 

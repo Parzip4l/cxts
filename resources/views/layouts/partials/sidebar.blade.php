@@ -234,8 +234,19 @@
                 </li>
             @endif
 
-            @if ($isSuperAdmin)
+            @if ($isSuperAdmin || $canManageOrganization)
                 <li class="menu-title">Administration</li>
+                <li class="nav-item">
+                    <a class="nav-link" href="{{ route('master-data.users.index') }}">
+                        <span class="nav-icon">
+                            <iconify-icon icon="solar:user-id-outline"></iconify-icon>
+                        </span>
+                        <span class="nav-text">User &amp; Role Management</span>
+                    </a>
+                </li>
+            @endif
+
+            @if ($isSuperAdmin)
                 <li class="nav-item">
                     <a class="nav-link" href="{{ route('audit-trail.index') }}">
                         <span class="nav-icon">
@@ -261,7 +272,6 @@
 
                     <div class="collapse" id="sidebarOrgData">
                         <ul class="nav sub-navbar-nav">
-                            <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('master-data.users.index') }}">Users</a></li>
                             <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('master-data.departments.index') }}">Departments</a></li>
                             <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('master-data.vendors.index') }}">Vendors</a></li>
                             <li class="sub-nav-item"><a class="sub-nav-link" href="{{ route('master-data.services.index') }}">Service Catalog</a></li>
