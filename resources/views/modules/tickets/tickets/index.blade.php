@@ -70,7 +70,6 @@
     $advancedFilterApplied = filled($filters['ticket_category_id'] ?? null)
         || filled($filters['ticket_subcategory_id'] ?? null)
         || filled($filters['ticket_detail_subcategory_id'] ?? null)
-        || filled($filters['process_type'] ?? null)
         || filled($filters['incident_detection_source'] ?? null)
         || filled($filters['is_major_incident'] ?? null)
         || filled($filters['expected_approver_id'] ?? null)
@@ -175,20 +174,25 @@
         @endif
 
         <form method="GET" class="mb-3" id="ticket-list-filter-form">
-            <div class="rounded-3 border bg-light-subtle p-3 p-lg-4 mb-3">
-                <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
-                    <div>
-                        <div class="fw-semibold text-dark">Quick Filters</div>
-                        <div class="small text-muted">Gunakan filter inti untuk menemukan ticket lebih cepat tanpa membuka semua opsi.</div>
+            <div class="ticket-filter-panel mb-3">
+                <div class="ticket-filter-header">
+                    <div class="ticket-filter-heading">
+                        <span class="ticket-filter-heading-icon"><iconify-icon icon="solar:filter-outline"></iconify-icon></span>
+                        <div>
+                            <div class="ticket-filter-title">Quick Filters</div>
+                            <div class="ticket-filter-subtitle">Temukan ticket berdasarkan kata kunci, status, prioritas, atau engineer.</div>
+                        </div>
                     </div>
-                    <div class="d-flex flex-wrap gap-2">
-                        <button class="btn btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#advancedTicketFilters" aria-expanded="{{ $advancedFilterApplied ? 'true' : 'false' }}" aria-controls="advancedTicketFilters">
-                            {{ $advancedFilterApplied ? 'Hide Advanced Filters' : 'Show Advanced Filters' }}
+                    <div class="ticket-filter-header-actions">
+                        <button class="btn btn-outline-secondary" id="ticket-advanced-filter-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#advancedTicketFilters" aria-expanded="{{ $advancedFilterApplied ? 'true' : 'false' }}" aria-controls="advancedTicketFilters">
+                            <iconify-icon icon="solar:tuning-2-outline"></iconify-icon>
+                            <span data-filter-toggle-label>{{ $advancedFilterApplied ? 'Hide Advanced' : 'Advanced Filters' }}</span>
                         </button>
-                        <a href="{{ route('tickets.index') }}" class="btn btn-outline-light">Reset</a>
-                        <button class="btn btn-primary" type="submit">Apply Filters</button>
                         @can('create', \App\Models\Ticket::class)
-                            <button type="button" class="btn btn-dark" data-bs-toggle="modal" data-bs-target="#createTicketModal">Create Ticket</button>
+                            <button type="button" class="btn btn-dark" data-bs-toggle="modal" data-bs-target="#createTicketModal">
+                                <iconify-icon icon="solar:add-circle-outline"></iconify-icon>
+                                <span>Create Ticket</span>
+                            </button>
                         @endcan
                     </div>
                 </div>
@@ -200,14 +204,14 @@
                     <input type="hidden" name="assignment_queue" value="ready">
                 @endif
 
-                <div class="row g-3">
-                    <div class="col-lg-4">
-                        <label class="form-label small text-muted mb-1">Search</label>
+                <div class="ticket-filter-grid">
+                    <div class="ticket-filter-field ticket-filter-search">
+                        <label class="form-label">Search</label>
                         <input type="text" name="search" class="form-control" placeholder="Ticket number, title, requester, or service"
                             value="{{ $filters['search'] ?? '' }}">
                     </div>
-                    <div class="col-sm-6 col-lg-2">
-                        <label class="form-label small text-muted mb-1">Process</label>
+                    <div class="ticket-filter-field">
+                        <label class="form-label">Process</label>
                         <select name="process_type" class="form-select">
                             <option value="">All processes</option>
                             @foreach ($processTypeOptions as $processTypeCode => $processTypeLabel)
@@ -217,8 +221,8 @@
                             @endforeach
                         </select>
                     </div>
-                    <div class="col-sm-6 col-lg-2">
-                        <label class="form-label small text-muted mb-1">Status</label>
+                    <div class="ticket-filter-field">
+                        <label class="form-label">Status</label>
                         <select name="ticket_status_id" class="form-select">
                             <option value="">All status</option>
                             @foreach ($statusOptions as $option)
@@ -228,8 +232,8 @@
                             @endforeach
                         </select>
                     </div>
-                    <div class="col-sm-6 col-lg-2">
-                        <label class="form-label small text-muted mb-1">Priority</label>
+                    <div class="ticket-filter-field">
+                        <label class="form-label">Priority</label>
                         <select name="ticket_priority_id" class="form-select">
                             <option value="">All priority</option>
                             @foreach ($priorityOptions as $option)
@@ -239,8 +243,8 @@
                             @endforeach
                         </select>
                     </div>
-                    <div class="col-sm-6 col-lg-2">
-                        <label class="form-label small text-muted mb-1">Approval Status</label>
+                    <div class="ticket-filter-field">
+                        <label class="form-label">Approval Status</label>
                         <select name="approval_status" class="form-select">
                             <option value="">All approval status</option>
                             @foreach ($approvalStatusOptions as $approvalStatusCode => $approvalStatusLabel)
@@ -250,8 +254,8 @@
                             @endforeach
                         </select>
                     </div>
-                    <div class="col-sm-6 col-lg-2">
-                        <label class="form-label small text-muted mb-1">Assigned Engineer</label>
+                    <div class="ticket-filter-field">
+                        <label class="form-label">Assigned Engineer</label>
                         <select name="assigned_engineer_id" class="form-select"
                             data-searchable-select data-search-placeholder="Search engineer">
                             <option value="">All engineer</option>
@@ -264,20 +268,29 @@
                     </div>
                 </div>
 
-                @if (count($activeFilterSummary))
-                    <div class="mt-3">
-                        <div class="small text-muted mb-2">Active filters</div>
-                        <div class="d-flex flex-wrap gap-2">
+                <div class="ticket-filter-footer">
+                    <div class="ticket-active-filters">
+                        @if (count($activeFilterSummary))
+                            <span class="ticket-active-label">Active filters</span>
                             @foreach ($activeFilterSummary as $filterChip)
-                                <span class="badge bg-white text-dark border">{{ $filterChip }}</span>
+                                <span class="ticket-filter-chip">{{ $filterChip }}</span>
                             @endforeach
-                        </div>
+                        @else
+                            <span class="ticket-filter-empty">No filters applied</span>
+                        @endif
                     </div>
-                @endif
+                    <div class="ticket-filter-submit-actions">
+                        <a href="{{ route('tickets.index') }}" class="btn btn-outline-secondary">Reset</a>
+                        <button class="btn btn-primary" type="submit">
+                            <iconify-icon icon="solar:magnifer-outline"></iconify-icon>
+                            <span>Apply Filters</span>
+                        </button>
+                    </div>
+                </div>
             </div>
 
             <div class="collapse {{ $advancedFilterApplied ? 'show' : '' }}" id="advancedTicketFilters">
-                <div class="rounded-3 border border-dashed p-3 p-lg-4 mb-3">
+                <div class="ticket-advanced-panel mb-3">
                     <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-3">
                         <div>
                             <div class="fw-semibold text-dark">Advanced Filters</div>
@@ -569,6 +582,213 @@
 
 @push('styles')
 <style>
+    .ticket-filter-panel,
+    .ticket-advanced-panel {
+        background: #fff;
+        border: 1px solid #e3e9f0;
+        border-radius: 14px;
+    }
+
+    .ticket-filter-panel {
+        box-shadow: 0 8px 24px rgba(1, 25, 50, .045);
+        overflow: hidden;
+    }
+
+    .ticket-filter-header {
+        align-items: center;
+        border-bottom: 1px solid #edf1f5;
+        display: flex;
+        gap: 1rem;
+        justify-content: space-between;
+        padding: 1.1rem 1.25rem;
+    }
+
+    .ticket-filter-heading {
+        align-items: center;
+        display: flex;
+        gap: .75rem;
+        min-width: 0;
+    }
+
+    .ticket-filter-heading-icon {
+        align-items: center;
+        background: #eaf3ff;
+        border-radius: 10px;
+        color: #035fc7;
+        display: inline-flex;
+        flex: 0 0 40px;
+        font-size: 1.2rem;
+        height: 40px;
+        justify-content: center;
+    }
+
+    .ticket-filter-title {
+        color: #011932;
+        font-size: .95rem;
+        font-weight: 700;
+    }
+
+    .ticket-filter-subtitle {
+        color: #738196;
+        font-size: .76rem;
+        line-height: 1.45;
+        margin-top: .1rem;
+    }
+
+    .ticket-filter-header-actions,
+    .ticket-filter-submit-actions {
+        align-items: center;
+        display: flex;
+        flex-wrap: wrap;
+        gap: .55rem;
+    }
+
+    .ticket-filter-header-actions .btn,
+    .ticket-filter-submit-actions .btn {
+        align-items: center;
+        border-radius: 9px;
+        display: inline-flex;
+        font-size: .82rem;
+        font-weight: 650;
+        gap: .4rem;
+        justify-content: center;
+        min-height: 40px;
+        padding-inline: .9rem;
+    }
+
+    .ticket-filter-grid {
+        display: grid;
+        gap: 1rem;
+        grid-template-columns: 1fr;
+        padding: 1.25rem;
+    }
+
+    .ticket-filter-field {
+        min-width: 0;
+    }
+
+    .ticket-filter-field .form-label {
+        color: #526176;
+        font-size: .76rem;
+        font-weight: 650;
+        margin-bottom: .42rem;
+    }
+
+    .ticket-filter-field .form-control,
+    .ticket-filter-field .form-select,
+    .ticket-filter-field .choices__inner {
+        background-color: #fff;
+        border-color: #dbe3ec;
+        border-radius: 9px;
+        min-height: 44px;
+    }
+
+    .ticket-filter-field .form-control,
+    .ticket-filter-field .form-select {
+        color: #26364b;
+        font-size: .84rem;
+    }
+
+    .ticket-filter-field .form-control:focus,
+    .ticket-filter-field .form-select:focus {
+        border-color: rgba(3, 95, 199, .55);
+        box-shadow: 0 0 0 .2rem rgba(3, 95, 199, .1);
+    }
+
+    .ticket-filter-field .choices {
+        margin-bottom: 0;
+    }
+
+    .ticket-filter-field .choices__inner {
+        align-items: center;
+        display: flex;
+        padding: .55rem .75rem;
+    }
+
+    .ticket-filter-field .choices__list--single {
+        padding: 0 1rem 0 0;
+    }
+
+    .ticket-filter-footer {
+        align-items: center;
+        background: #f8fafc;
+        border-top: 1px solid #edf1f5;
+        display: flex;
+        gap: 1rem;
+        justify-content: space-between;
+        padding: .9rem 1.25rem;
+    }
+
+    .ticket-active-filters {
+        align-items: center;
+        display: flex;
+        flex: 1 1 auto;
+        flex-wrap: wrap;
+        gap: .4rem;
+        min-width: 0;
+    }
+
+    .ticket-active-label,
+    .ticket-filter-empty {
+        color: #758398;
+        font-size: .72rem;
+        font-weight: 600;
+        margin-right: .15rem;
+    }
+
+    .ticket-filter-chip {
+        background: #fff;
+        border: 1px solid #dce4ed;
+        border-radius: 999px;
+        color: #35465b;
+        font-size: .7rem;
+        font-weight: 600;
+        padding: .32rem .55rem;
+    }
+
+    .ticket-advanced-panel {
+        border-style: dashed;
+        padding: 1.25rem;
+    }
+
+    @media (min-width: 576px) {
+        .ticket-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .ticket-filter-search { grid-column: span 2; }
+    }
+
+    @media (min-width: 992px) {
+        .ticket-filter-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+
+    @media (min-width: 1400px) {
+        .ticket-filter-grid {
+            grid-template-columns: minmax(260px, 2fr) repeat(5, minmax(130px, 1fr));
+        }
+        .ticket-filter-search { grid-column: auto; }
+    }
+
+    @media (max-width: 767.98px) {
+        .ticket-filter-header,
+        .ticket-filter-footer {
+            align-items: stretch;
+            flex-direction: column;
+        }
+        .ticket-filter-header-actions,
+        .ticket-filter-submit-actions {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .ticket-filter-submit-actions .btn { width: 100%; }
+    }
+
+    @media (max-width: 575.98px) {
+        .ticket-filter-grid { padding: 1rem; }
+        .ticket-filter-header,
+        .ticket-filter-footer { padding: 1rem; }
+        .ticket-filter-search { grid-column: auto; }
+        .ticket-filter-heading-icon { display: none; }
+    }
+
     #ticket-list-table td,
     #ticket-list-table th {
         vertical-align: middle;
@@ -678,10 +898,22 @@
         const columnStorageKey = 'ticket_list_optional_columns';
         const successAlert = document.getElementById('ticket-list-success-alert');
         const createdTicketRow = document.querySelector('[data-created-ticket-row="true"]');
+        const advancedFilters = document.getElementById('advancedTicketFilters');
+        const advancedFilterToggle = document.getElementById('ticket-advanced-filter-toggle');
 
         if (!form) {
             return;
         }
+
+        const updateAdvancedFilterLabel = (isOpen) => {
+            const label = advancedFilterToggle?.querySelector('[data-filter-toggle-label]');
+            if (label) {
+                label.textContent = isOpen ? 'Hide Advanced' : 'Advanced Filters';
+            }
+        };
+
+        advancedFilters?.addEventListener('shown.bs.collapse', () => updateAdvancedFilterLabel(true));
+        advancedFilters?.addEventListener('hidden.bs.collapse', () => updateAdvancedFilterLabel(false));
 
         @if (session('ticket_created_from_modal'))
             if (successAlert) {

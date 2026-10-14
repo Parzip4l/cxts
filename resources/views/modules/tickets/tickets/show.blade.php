@@ -166,9 +166,10 @@
     };
 @endphp
 
-<div class="row g-3">
+<div class="ticket-detail-page">
+<div class="row g-4 align-items-start">
     <div class="col-lg-8">
-        <div class="card">
+        <div class="card ticket-detail-card ticket-detail-main">
             <div class="card-body">
                 @if (session('success'))
                     <div class="alert alert-success">{{ session('success') }}</div>
@@ -183,29 +184,28 @@
                     </div>
                 @endif
 
-                <div class="rounded-4 border bg-light-subtle p-4 mb-4">
-                    <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-3">
-                        <div>
-                            <div class="small text-muted text-uppercase fw-semibold mb-2">Executive Summary</div>
-                            <h4 class="mb-2">{{ $ticket->title }}</h4>
-                            <div class="d-flex flex-wrap gap-2">
-                                <span class="badge bg-dark-subtle text-dark border">{{ $ticket->ticket_number }}</span>
+                <section class="ticket-hero mb-4">
+                    <div class="ticket-hero-header mb-3">
+                        <div class="ticket-hero-copy">
+                            <div class="ticket-eyebrow">Ticket overview</div>
+                            <h2 class="ticket-title">{{ $ticket->title }}</h2>
+                            <div class="ticket-badge-list">
+                                <span class="ticket-number">{{ $ticket->ticket_number }}</span>
                                 <span class="badge bg-primary-subtle text-primary">{{ $ticket->processTypeLabel() }}</span>
                                 <span class="badge {{ $ticketStatusBadgeClass($ticket->status?->code) }}">{{ $ticket->status?->name ?? '-' }}</span>
                                 <span class="badge {{ $priorityBadgeClass($ticket->priority?->name) }}">{{ $ticket->priority?->name ?? 'No Priority' }}</span>
-                                <span class="badge {{ $approvalStatusBadgeClass($ticket->approval_status) }}">{{ $ticket->approvalStatusLabel() }}</span>
                                 @if ($responseRiskLabel)
                                     <span class="badge {{ $responseRiskBadgeClass }}">Response {{ $responseRiskLabel }}</span>
                                 @endif
                             </div>
                         </div>
-                        <div class="text-lg-end">
-                            <div class="small text-muted">Requester</div>
-                            <div class="fw-semibold">{{ $ticket->requester?->name ?? '-' }}</div>
-                            <div class="small text-muted">{{ $ticket->requesterDepartment?->name ?? 'No department' }}</div>
+                        <div class="ticket-requester text-end">
+                            <div class="ticket-requester-label">Requester</div>
+                            <div class="ticket-requester-name">{{ $ticket->requester?->name ?? '-' }}</div>
+                            <div class="ticket-requester-meta">{{ $ticket->requesterDepartment?->name ?? 'No department' }}</div>
                             @if ($canEditTicket)
-                                <div class="mt-3">
-                                    <a href="{{ route('tickets.edit', $ticket) }}" class="btn btn-sm btn-outline-secondary">Edit Ticket</a>
+                                <div class="ticket-hero-actions mt-3">
+                                    <a href="{{ route('tickets.edit', $ticket) }}" class="btn btn-sm btn-primary">Edit Ticket</a>
                                     <a href="{{ route('problems.create', ['ticket_id' => $ticket->id]) }}" class="btn btn-sm btn-outline-primary">Create Problem</a>
                                     <a href="{{ route('knowledge-articles.create', ['ticket_id' => $ticket->id]) }}" class="btn btn-sm btn-outline-primary">Create Article</a>
                                 </div>
@@ -245,73 +245,72 @@
                     </div>
 
                     <div class="row g-3 mt-3">
-                        <div class="col-md-4">
-                            <div class="rounded-3 border bg-white p-3 h-100">
-                                <div class="small text-muted mb-1">Process Type</div>
-                                <div class="fw-semibold">{{ $ticket->processTypeLabel() }}</div>
-                                <div class="small text-muted">ITIL process classification</div>
+                        <div class="col-sm-6 col-xl-3">
+                            <div class="ticket-metric h-100">
+                                <span class="ticket-metric-icon"><iconify-icon icon="solar:diagram-up-outline"></iconify-icon></span>
+                                <div class="ticket-metric-label">Process Type</div>
+                                <div class="ticket-metric-value">{{ $ticket->processTypeLabel() }}</div>
                             </div>
                         </div>
-                        <div class="col-md-4">
-                            <div class="rounded-3 border bg-white p-3 h-100">
-                                <div class="small text-muted mb-1">Expected Approver</div>
-                                <div class="fw-semibold">{{ $ticket->expectedApproverDisplayName() }}</div>
-                                <div class="small text-muted">{{ $ticket->flowPolicySourceLabel() }}</div>
+                        <div class="col-sm-6 col-xl-3">
+                            <div class="ticket-metric h-100">
+                                <span class="ticket-metric-icon"><iconify-icon icon="solar:calendar-date-outline"></iconify-icon></span>
+                                <div class="ticket-metric-label">Ticket Age</div>
+                                <div class="ticket-metric-value">{{ $ticketAgeHours !== null ? number_format($ticketAgeHours) . ' hours' : '-' }}</div>
                             </div>
                         </div>
-                        <div class="col-md-4">
-                            <div class="rounded-3 border bg-white p-3 h-100">
-                                <div class="small text-muted mb-1">Ticket Age</div>
-                                <div class="fw-semibold">{{ $ticketAgeHours !== null ? number_format($ticketAgeHours) . ' hours' : '-' }}</div>
-                                <div class="small text-muted">{{ optional($ticket->created_at)->format('d M Y H:i') ?? 'Unknown created time' }}</div>
+                        <div class="col-sm-6 col-xl-3">
+                            <div class="ticket-metric h-100">
+                                <span class="ticket-metric-icon"><iconify-icon icon="solar:stopwatch-outline"></iconify-icon></span>
+                                <div class="ticket-metric-label">Work Duration</div>
+                                <div class="ticket-metric-value">{{ $workDurationMinutes !== null ? $workDurationMinutes.' min' : '-' }}</div>
                             </div>
                         </div>
-                        <div class="col-md-4">
-                            <div class="rounded-3 border bg-white p-3 h-100">
-                                <div class="small text-muted mb-1">Work Duration</div>
-                                <div class="fw-semibold">{{ $workDurationMinutes !== null ? $workDurationMinutes.' min' : '-' }}</div>
-                                <div class="small text-muted">Started to completed/resolved</div>
+                        <div class="col-sm-6 col-xl-3">
+                            <div class="ticket-metric h-100">
+                                <span class="ticket-metric-icon"><iconify-icon icon="solar:shield-check-outline"></iconify-icon></span>
+                                <div class="ticket-metric-label">Approval</div>
+                                <div class="ticket-metric-value">{{ $ticket->approvalStatusLabel() }}</div>
                             </div>
                         </div>
                     </div>
-                </div>
+                </section>
 
-                <div class="row g-3 mb-4">
-                    <div class="col-md-3">
-                        <div class="rounded-3 border bg-light-subtle p-3 h-100">
-                            <div class="text-muted small mb-1">Approval Status</div>
-                            <div class="fw-semibold">{{ $ticket->approvalStatusLabel() }}</div>
-                            <div class="small text-muted">{{ $ticket->requires_approval ? 'Approval gate active' : 'No approval gate' }}</div>
+                <div class="row g-3 mb-4 ticket-status-grid">
+                    <div class="col-md-4">
+                        <div class="ticket-status-item h-100">
+                            <div class="ticket-status-label">Approval Status</div>
+                            <div class="ticket-status-value">{{ $ticket->approvalStatusLabel() }}</div>
+                            <div class="ticket-status-note">{{ $ticket->requires_approval ? 'Approval gate active' : 'No approval gate' }}</div>
                         </div>
                     </div>
-                    <div class="col-md-3">
-                        <div class="rounded-3 border bg-light-subtle p-3 h-100">
-                            <div class="text-muted small mb-1">Assignment Gate</div>
-                            <div class="fw-semibold">{{ $ticket->canBeAssigned() ? 'Ready' : 'Blocked' }}</div>
-                            <div class="small text-muted">{{ $ticket->allow_direct_assignment ? 'Direct assignment allowed' : 'Ready flag required' }}</div>
+                    <div class="col-md-4">
+                        <div class="ticket-status-item h-100">
+                            <div class="ticket-status-label">Assignment Gate</div>
+                            <div class="ticket-status-value">{{ $ticket->canBeAssigned() ? 'Ready' : 'Blocked' }}</div>
+                            <div class="ticket-status-note">{{ $ticket->allow_direct_assignment ? 'Direct assignment allowed' : 'Ready flag required' }}</div>
                         </div>
                     </div>
-                    <div class="col-md-3">
-                        <div class="rounded-3 border bg-light-subtle p-3 h-100">
-                            <div class="text-muted small mb-1">Expected Approver</div>
-                            <div class="fw-semibold">{{ $ticket->expectedApproverDisplayName() }}</div>
-                            <div class="small text-muted">{{ $ticket->flowPolicySourceLabel() }}</div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="rounded-3 border bg-light-subtle p-3 h-100">
-                            <div class="text-muted small mb-1">Work Duration</div>
-                            <div class="fw-semibold">{{ $workDurationMinutes !== null ? $workDurationMinutes.' min' : '-' }}</div>
-                            <div class="small text-muted">Started to completed/resolved</div>
+                    <div class="col-md-4">
+                        <div class="ticket-status-item h-100">
+                            <div class="ticket-status-label">Expected Approver</div>
+                            <div class="ticket-status-value">{{ $ticket->expectedApproverDisplayName() }}</div>
+                            <div class="ticket-status-note">{{ $ticket->flowPolicySourceLabel() }}</div>
                         </div>
                     </div>
                 </div>
 
                 <div class="row g-3 mb-4">
                     <div class="col-lg-7">
-                        <div class="rounded-3 border bg-light-subtle p-3 h-100">
-                            <div class="small text-muted text-uppercase fw-semibold mb-2">Issue Brief</div>
-                            <p class="mb-3">{{ $ticket->description }}</p>
+                        <div class="ticket-content-panel h-100">
+                            <div class="ticket-section-heading">
+                                <span class="ticket-section-icon"><iconify-icon icon="solar:document-text-outline"></iconify-icon></span>
+                                <div>
+                                    <div class="ticket-section-title">Issue Brief</div>
+                                    <div class="ticket-section-subtitle">Informasi utama yang disampaikan requester</div>
+                                </div>
+                            </div>
+                            <p class="ticket-description">{{ $ticket->description }}</p>
                             <div class="d-flex flex-wrap gap-2">
                                 <span class="badge bg-white text-dark border">Service: {{ $ticket->service?->name ?? 'No related service' }}</span>
                                 <span class="badge bg-white text-dark border">Asset: {{ $ticket->asset?->name ?? 'No related asset' }}</span>
@@ -320,9 +319,15 @@
                         </div>
                     </div>
                     <div class="col-lg-5">
-                        <div class="rounded-3 border p-3 h-100">
-                            <div class="small text-muted text-uppercase fw-semibold mb-3">Timeline Snapshot</div>
-                            <div class="d-flex flex-column gap-3">
+                        <div class="ticket-content-panel h-100">
+                            <div class="ticket-section-heading">
+                                <span class="ticket-section-icon"><iconify-icon icon="solar:clock-circle-outline"></iconify-icon></span>
+                                <div>
+                                    <div class="ticket-section-title">Timeline Snapshot</div>
+                                    <div class="ticket-section-subtitle">Milestone waktu ticket</div>
+                                </div>
+                            </div>
+                            <div class="ticket-time-list">
                                 <div class="d-flex justify-content-between gap-3">
                                     <div class="text-muted small">Created</div>
                                     <div class="fw-medium text-end">{{ optional($ticket->created_at)->format('d M Y H:i') ?? '-' }}</div>
@@ -887,7 +892,7 @@
         </div>
     </div>
 
-    <div class="col-lg-4">
+    <div class="col-lg-4 ticket-detail-sidebar">
         <div class="card">
             <div class="card-header">
                 <h5 class="card-title mb-0">Ticket Lifecycle</h5>
@@ -1259,14 +1264,348 @@
         </div>
     </div>
 </div>
+</div>
 @endsection
 
 @push('styles')
 <style>
+    .ticket-detail-page {
+        --ticket-navy: #011932;
+        --ticket-blue: #035fc7;
+        --ticket-border: #e4eaf1;
+        --ticket-muted: #6d7b8d;
+    }
+
+    .ticket-detail-page > .row > [class*="col-"] > .card,
+    .ticket-detail-sidebar > .card {
+        border: 1px solid var(--ticket-border);
+        border-radius: 16px;
+        box-shadow: 0 8px 24px rgba(1, 25, 50, .055);
+        margin-bottom: 1.25rem;
+        overflow: hidden;
+    }
+
+    .ticket-detail-page .ticket-detail-main > .card-body {
+        padding: 1.35rem;
+    }
+
+    .ticket-detail-page .card-header {
+        background: #fff;
+        border-bottom: 1px solid var(--ticket-border);
+        padding: 1.05rem 1.2rem;
+    }
+
+    .ticket-detail-page .card-header .card-title {
+        color: var(--ticket-navy);
+        font-size: .96rem;
+        font-weight: 700;
+        letter-spacing: -.01em;
+    }
+
+    .ticket-detail-page .card-body {
+        padding: 1.2rem;
+    }
+
+    .ticket-detail-page .badge {
+        border-radius: 999px;
+        font-size: .7rem;
+        font-weight: 650;
+        letter-spacing: .01em;
+        padding: .42rem .65rem;
+    }
+
+    .ticket-hero {
+        background: #fff;
+        border: 1px solid var(--ticket-border);
+        border-radius: 15px;
+        color: var(--ticket-navy);
+        overflow: hidden;
+        padding: 1.4rem;
+        position: relative;
+    }
+
+    .ticket-hero::after {
+        background: #f3f7fc;
+        border-radius: 50%;
+        content: '';
+        height: 220px;
+        pointer-events: none;
+        position: absolute;
+        right: -110px;
+        top: -130px;
+        width: 220px;
+    }
+
+    .ticket-hero > * {
+        position: relative;
+        z-index: 1;
+    }
+
+    .ticket-hero-header {
+        align-items: start;
+        display: grid;
+        gap: 1.25rem;
+        grid-template-columns: minmax(0, 1fr) minmax(250px, 300px);
+    }
+
+    .ticket-hero-copy {
+        flex: 1 1 410px;
+        min-width: 0;
+    }
+
+    .ticket-eyebrow {
+        color: var(--ticket-blue);
+        font-size: .68rem;
+        font-weight: 700;
+        letter-spacing: .12em;
+        margin-bottom: .6rem;
+        text-transform: uppercase;
+    }
+
+    .ticket-title {
+        color: var(--ticket-navy);
+        font-size: clamp(1.3rem, 2.1vw, 1.75rem);
+        font-weight: 700;
+        letter-spacing: -.025em;
+        line-height: 1.3;
+        margin: 0 0 .85rem;
+    }
+
+    .ticket-badge-list {
+        align-items: center;
+        display: flex;
+        flex-wrap: wrap;
+        gap: .45rem;
+    }
+
+    .ticket-number {
+        background: #f6f8fb;
+        border: 1px solid #dce4ed;
+        border-radius: 999px;
+        color: var(--ticket-navy);
+        font-size: .72rem;
+        font-weight: 700;
+        letter-spacing: .04em;
+        padding: .38rem .65rem;
+    }
+
+    .ticket-requester {
+        background: #f7f9fc;
+        border: 1px solid var(--ticket-border);
+        border-radius: 12px;
+        min-width: 220px;
+        padding: .85rem 1rem;
+        width: 100%;
+    }
+
+    .ticket-requester-label,
+    .ticket-requester-meta {
+        color: var(--ticket-muted);
+        font-size: .75rem;
+    }
+
+    .ticket-requester-name {
+        font-size: .95rem;
+        font-weight: 700;
+        margin: .12rem 0;
+    }
+
+    .ticket-hero-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: .4rem;
+        justify-content: flex-end;
+    }
+
+    .ticket-hero-actions .btn {
+        border-radius: 8px;
+        font-weight: 650;
+    }
+
+    .ticket-metric {
+        background: #f7f9fc;
+        border: 1px solid var(--ticket-border);
+        border-radius: 11px;
+        min-height: 108px;
+        padding: .8rem;
+    }
+
+    .ticket-metric-icon {
+        align-items: center;
+        background: #e7f2ff;
+        border-radius: 8px;
+        color: var(--ticket-blue);
+        display: inline-flex;
+        font-size: 1.05rem;
+        height: 30px;
+        justify-content: center;
+        margin-bottom: .6rem;
+        width: 30px;
+    }
+
+    .ticket-metric-label {
+        color: var(--ticket-muted);
+        font-size: .69rem;
+        margin-bottom: .15rem;
+    }
+
+    .ticket-metric-value {
+        color: var(--ticket-navy);
+        font-size: .88rem;
+        font-weight: 700;
+        line-height: 1.25;
+    }
+
+    .ticket-status-grid {
+        position: relative;
+    }
+
+    .ticket-status-item {
+        background: #f7f9fc;
+        border: 1px solid var(--ticket-border);
+        border-left: 3px solid var(--ticket-blue);
+        border-radius: 11px;
+        padding: .9rem 1rem;
+    }
+
+    .ticket-status-label,
+    .ticket-status-note {
+        color: var(--ticket-muted);
+        font-size: .72rem;
+    }
+
+    .ticket-status-value {
+        color: var(--ticket-navy);
+        font-size: .92rem;
+        font-weight: 700;
+        margin: .2rem 0;
+    }
+
+    .ticket-content-panel {
+        background: #fff;
+        border: 1px solid var(--ticket-border);
+        border-radius: 13px;
+        padding: 1.1rem;
+    }
+
+    .ticket-section-heading {
+        align-items: center;
+        display: flex;
+        gap: .7rem;
+        margin-bottom: 1rem;
+    }
+
+    .ticket-section-icon {
+        align-items: center;
+        background: #eef5fd;
+        border-radius: 9px;
+        color: var(--ticket-blue);
+        display: inline-flex;
+        flex: 0 0 36px;
+        font-size: 1.1rem;
+        height: 36px;
+        justify-content: center;
+    }
+
+    .ticket-section-title {
+        color: var(--ticket-navy);
+        font-size: .87rem;
+        font-weight: 700;
+    }
+
+    .ticket-section-subtitle {
+        color: var(--ticket-muted);
+        font-size: .7rem;
+    }
+
+    .ticket-description {
+        color: #354357;
+        font-size: .9rem;
+        line-height: 1.7;
+        margin: 0 0 1rem;
+        white-space: pre-line;
+    }
+
+    .ticket-time-list {
+        display: grid;
+        gap: 0;
+    }
+
+    .ticket-time-list > div {
+        border-bottom: 1px dashed var(--ticket-border);
+        padding: .55rem 0;
+    }
+
+    .ticket-time-list > div:first-child { padding-top: 0; }
+    .ticket-time-list > div:last-child { border-bottom: 0; padding-bottom: 0; }
+
+    .ticket-detail-page .table {
+        --bs-table-bg: transparent;
+        font-size: .82rem;
+    }
+
+    .ticket-detail-page .table thead th {
+        background: #f6f8fb;
+        border-bottom-color: var(--ticket-border);
+        color: #607086;
+        font-size: .68rem;
+        font-weight: 700;
+        letter-spacing: .04em;
+        padding: .75rem;
+        text-transform: uppercase;
+        white-space: nowrap;
+    }
+
+    .ticket-detail-page .table tbody td {
+        border-bottom-color: #edf1f5;
+        padding: .75rem;
+    }
+
+    .ticket-detail-sidebar .btn {
+        border-radius: 9px;
+        font-weight: 650;
+    }
+
+    .ticket-detail-sidebar .form-control,
+    .ticket-detail-sidebar .form-select {
+        border-color: #dce3eb;
+        border-radius: 9px;
+        min-height: 42px;
+    }
+
+    .ticket-detail-sidebar .form-label {
+        color: #405067;
+        font-size: .78rem;
+        font-weight: 650;
+    }
+
+    .ticket-detail-page a.card {
+        border-color: var(--ticket-border) !important;
+        border-radius: 12px;
+        box-shadow: none;
+        transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+    }
+
+    .ticket-detail-page a.card:hover {
+        border-color: rgba(3, 95, 199, .4) !important;
+        box-shadow: 0 10px 24px rgba(1, 25, 50, .09);
+        transform: translateY(-2px);
+    }
+
     .assigned-engineer-section {
-        border-top: 1px solid var(--bs-border-color);
+        border-top: 1px solid var(--ticket-border);
         margin-top: 1.25rem;
         padding-top: 1rem;
+    }
+
+    .ticket-hero .assigned-engineer-section .text-muted,
+    .ticket-hero .assigned-owner-meta {
+        color: var(--ticket-muted) !important;
+    }
+
+    .ticket-hero .assigned-owner-avatar {
+        background: #e7f2ff;
+        color: var(--ticket-blue);
     }
 
     .assigned-engineer-list {
@@ -1353,6 +1692,19 @@
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+    }
+
+    @media (max-width: 767.98px) {
+        .ticket-hero-header { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 575.98px) {
+        .ticket-detail-main > .card-body,
+        .ticket-detail-page .card-body { padding: 1rem; }
+        .ticket-hero { border-radius: 13px; padding: 1.1rem; }
+        .ticket-requester { min-width: 0; text-align: left !important; }
+        .ticket-hero-actions { justify-content: flex-start; }
+        .ticket-metric { min-height: 96px; }
     }
 </style>
 @endpush
