@@ -37,10 +37,38 @@ class="authentication-bg cxts-auth-page"
     }
 
     .cxts-auth-story {
+        position: relative;
+        isolation: isolate;
         height: 100%;
         padding: 42px;
+        overflow: hidden;
         background: var(--auth-navy);
         color: #fff;
+    }
+
+    .cxts-auth-story::before,
+    .cxts-auth-story::after {
+        position: absolute;
+        z-index: -1;
+        content: '';
+        border-radius: 50%;
+        pointer-events: none;
+    }
+
+    .cxts-auth-story::before {
+        width: 360px;
+        height: 360px;
+        top: -180px;
+        right: -135px;
+        background: rgba(3, 95, 199, .28);
+    }
+
+    .cxts-auth-story::after {
+        width: 420px;
+        height: 420px;
+        bottom: -260px;
+        left: -190px;
+        background: rgba(25, 197, 210, .12);
     }
 
     .cxts-auth-logo { width: 132px; height: auto; }
@@ -70,31 +98,7 @@ class="authentication-bg cxts-auth-page"
         line-height: 1.65;
     }
 
-    .cxts-feature-list {
-        padding-top: 26px;
-        border-top: 1px solid rgba(255, 255, 255, .14);
-    }
-
-    .cxts-feature-row {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        color: rgba(255, 255, 255, .82);
-        font-size: .85rem;
-    }
-
-    .cxts-feature-row + .cxts-feature-row { margin-top: 14px; }
-
-    .cxts-feature-icon {
-        display: grid;
-        width: 32px;
-        height: 32px;
-        flex: 0 0 32px;
-        place-items: center;
-        border: 1px solid rgba(255, 255, 255, .16);
-        border-radius: 8px;
-        color: #59cfdb;
-    }
+    .cxts-auth-message { margin: auto 0; }
 
     .cxts-auth-form-panel {
         display: flex;
@@ -185,8 +189,6 @@ class="authentication-bg cxts-auth-page"
         .cxts-auth-logo { width: 110px; }
         .cxts-auth-headline { font-size: 2rem; }
         .cxts-auth-copy { margin-top: 12px; font-size: .9rem; }
-        .cxts-feature-list { padding-top: 18px; }
-        .cxts-feature-row + .cxts-feature-row { margin-top: 9px; }
         .cxts-auth-form-panel { padding-top: 24px; padding-bottom: 24px; }
         .cxts-auth-form { margin-top: 18px; }
         .cxts-security-note { margin-top: 14px; }
@@ -223,28 +225,13 @@ class="authentication-bg cxts-auth-page"
     <div class="container">
         <div class="cxts-auth-shell">
             <div class="row g-0 h-100">
-                <section class="col-lg-6 cxts-auth-story d-flex flex-column justify-content-between" aria-label="CXTS overview">
+                <section class="col-lg-6 cxts-auth-story d-flex flex-column" aria-label="CXTS overview">
                     <img src="{{ asset('images/cxts-white.png') }}" class="cxts-auth-logo" alt="CXTS">
 
-                    <div>
+                    <div class="cxts-auth-message">
                         <div class="cxts-auth-kicker">Service operations platform</div>
                         <h1 class="cxts-auth-headline">Operasional layanan dalam satu sistem.</h1>
                         <p class="cxts-auth-copy">Kelola ticket, approval, SLA, asset, dan inspeksi dengan alur yang jelas dan mudah dipantau.</p>
-                    </div>
-
-                    <div class="cxts-feature-list">
-                        <div class="cxts-feature-row">
-                            <span class="cxts-feature-icon"><iconify-icon icon="solar:ticket-outline"></iconify-icon></span>
-                            <span>Ticket dan assignment terpusat</span>
-                        </div>
-                        <div class="cxts-feature-row">
-                            <span class="cxts-feature-icon"><iconify-icon icon="solar:clock-circle-outline"></iconify-icon></span>
-                            <span>Pemantauan SLA dan progres pekerjaan</span>
-                        </div>
-                        <div class="cxts-feature-row">
-                            <span class="cxts-feature-icon"><iconify-icon icon="solar:shield-check-outline"></iconify-icon></span>
-                            <span>Akses pengguna berbasis peran</span>
-                        </div>
                     </div>
                 </section>
 
