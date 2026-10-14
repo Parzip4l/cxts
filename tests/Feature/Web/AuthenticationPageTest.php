@@ -10,8 +10,8 @@ class AuthenticationPageTest extends TestCase
     {
         $this->get(route('login'))
             ->assertOk()
-            ->assertSee('Selamat datang kembali')
-            ->assertSee('Masuk ke workspace')
+            ->assertSee('Masuk ke CXTS')
+            ->assertSee('Operasional layanan dalam satu sistem.')
             ->assertSee('toggle-password')
             ->assertDontSee('Demo Accounts')
             ->assertDontSee('name="password" value=', false);

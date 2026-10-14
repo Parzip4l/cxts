@@ -9,260 +9,256 @@ class="authentication-bg cxts-auth-page"
     .cxts-auth-page {
         --auth-navy: #011932;
         --auth-blue: #035fc7;
-        background:
-            radial-gradient(circle at 12% 14%, rgba(25, 197, 210, .2), transparent 28%),
-            radial-gradient(circle at 88% 86%, rgba(3, 95, 199, .2), transparent 30%),
-            #eef4fa !important;
-        color: #142235;
+        overflow: hidden;
+        background: #edf1f5 !important;
+        color: #17263a;
     }
 
-    .cxts-auth-page .account-pages { min-height: 100vh; padding: 2rem 0; }
+    .cxts-auth-page .account-pages {
+        display: flex;
+        height: 100dvh;
+        min-height: 0;
+        align-items: center;
+        padding: 20px 0;
+        overflow: hidden;
+    }
 
     .cxts-auth-shell {
-        position: relative;
-        max-width: 1160px;
-        min-height: 700px;
+        width: 100%;
+        max-width: 1080px;
+        height: min(680px, calc(100dvh - 40px));
+        min-height: 560px;
         margin: 0 auto;
         overflow: hidden;
-        border: 1px solid rgba(148, 163, 184, .2);
-        border-radius: 2rem;
+        border: 1px solid #dce3eb;
+        border-radius: 18px;
         background: #fff;
-        box-shadow: 0 30px 80px rgba(1, 25, 50, .16);
+        box-shadow: 0 18px 45px rgba(1, 25, 50, .12);
     }
 
     .cxts-auth-story {
-        position: relative;
-        isolation: isolate;
-        min-height: 700px;
-        padding: 3.25rem;
-        overflow: hidden;
-        background: linear-gradient(145deg, #011932 0%, #043b70 58%, #035fc7 130%);
+        height: 100%;
+        padding: 42px;
+        background: var(--auth-navy);
         color: #fff;
     }
 
-    .cxts-auth-story::before,
-    .cxts-auth-story::after {
-        position: absolute;
-        z-index: -1;
-        content: '';
-        border-radius: 50%;
-    }
+    .cxts-auth-logo { width: 132px; height: auto; }
 
-    .cxts-auth-story::before {
-        width: 360px;
-        height: 360px;
-        top: -170px;
-        right: -120px;
-        background: rgba(25, 197, 210, .25);
-    }
-
-    .cxts-auth-story::after {
-        width: 300px;
-        height: 300px;
-        bottom: -150px;
-        left: -100px;
-        background: rgba(3, 95, 199, .34);
-    }
-
-    .cxts-auth-logo { width: 142px; height: auto; }
-
-    .cxts-auth-eyebrow {
-        display: inline-flex;
-        align-items: center;
-        gap: .55rem;
-        padding: .52rem .8rem;
-        border: 1px solid rgba(255, 255, 255, .16);
-        border-radius: 999px;
-        background: rgba(255, 255, 255, .09);
-        color: rgba(255, 255, 255, .88);
+    .cxts-auth-kicker {
+        color: #59cfdb;
         font-size: .72rem;
         font-weight: 700;
-        letter-spacing: .08em;
+        letter-spacing: .09em;
         text-transform: uppercase;
-        backdrop-filter: blur(12px);
-    }
-
-    .cxts-auth-eyebrow::before {
-        width: 8px;
-        height: 8px;
-        content: '';
-        border-radius: 50%;
-        background: #4ce0c0;
-        box-shadow: 0 0 0 5px rgba(76, 224, 192, .12);
     }
 
     .cxts-auth-headline {
-        max-width: 520px;
-        margin-top: 1.5rem;
+        max-width: 440px;
+        margin: 14px 0 0;
         color: #fff;
-        font-size: clamp(2.1rem, 4vw, 3.45rem);
-        font-weight: 800;
-        line-height: 1.05;
-        letter-spacing: -.045em;
+        font-size: clamp(2rem, 3vw, 2.65rem);
+        font-weight: 750;
+        line-height: 1.12;
+        letter-spacing: -.035em;
     }
 
     .cxts-auth-copy {
-        max-width: 500px;
+        max-width: 430px;
+        margin: 18px 0 0;
         color: rgba(255, 255, 255, .68);
-        font-size: 1rem;
-        line-height: 1.75;
+        line-height: 1.65;
     }
 
-    .cxts-flow-card {
-        padding: 1rem;
-        border: 1px solid rgba(255, 255, 255, .12);
-        border-radius: 1.15rem;
-        background: rgba(255, 255, 255, .075);
-        backdrop-filter: blur(14px);
+    .cxts-feature-list {
+        padding-top: 26px;
+        border-top: 1px solid rgba(255, 255, 255, .14);
     }
 
-    .cxts-flow-icon {
+    .cxts-feature-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        color: rgba(255, 255, 255, .82);
+        font-size: .85rem;
+    }
+
+    .cxts-feature-row + .cxts-feature-row { margin-top: 14px; }
+
+    .cxts-feature-icon {
         display: grid;
-        flex: 0 0 auto;
-        width: 42px;
-        height: 42px;
+        width: 32px;
+        height: 32px;
+        flex: 0 0 32px;
         place-items: center;
-        border-radius: .9rem;
-        background: rgba(255, 255, 255, .12);
-        color: #72e1ed;
-        font-size: 1.25rem;
+        border: 1px solid rgba(255, 255, 255, .16);
+        border-radius: 8px;
+        color: #59cfdb;
     }
 
     .cxts-auth-form-panel {
         display: flex;
-        min-height: 700px;
+        height: 100%;
         align-items: center;
-        padding: 3.25rem clamp(1.5rem, 4vw, 4.25rem);
+        padding: 40px clamp(32px, 5vw, 64px);
+        background: #fff;
     }
 
-    .cxts-auth-form-wrap { width: 100%; max-width: 430px; margin: 0 auto; }
-    .cxts-mobile-logo { display: none; width: 116px; margin-bottom: 2rem; }
+    .cxts-auth-form-wrap { width: 100%; max-width: 390px; margin: 0 auto; }
+    .cxts-mobile-logo { display: none; width: 110px; margin-bottom: 28px; }
 
     .cxts-auth-title {
+        margin-bottom: 8px;
         color: var(--auth-navy);
-        font-size: 2rem;
-        font-weight: 800;
-        letter-spacing: -.035em;
+        font-size: 1.85rem;
+        font-weight: 750;
+        letter-spacing: -.025em;
     }
 
     .cxts-auth-alert {
-        border: 1px solid rgba(239, 68, 68, .16);
-        border-radius: 1rem;
-        background: #fff4f4;
+        margin: 20px 0 0;
+        padding: 12px 14px;
+        border: 1px solid #f3cdcd;
+        border-radius: 10px;
+        background: #fff7f7;
         color: #9f2424;
     }
 
-    .cxts-field-label { margin-bottom: .55rem; color: #25354a; font-size: .82rem; font-weight: 700; }
+    .cxts-auth-form { margin-top: 26px; }
+    .cxts-field-label { margin-bottom: 7px; color: #34445a; font-size: .8rem; font-weight: 650; }
 
     .cxts-input-group {
-        min-height: 54px;
+        min-height: 50px;
         overflow: hidden;
-        border: 1px solid #dbe4ee;
-        border-radius: 1rem;
-        background: #f8fafc;
-        transition: border-color .2s ease, box-shadow .2s ease, background-color .2s ease;
+        border: 1px solid #d7e0ea;
+        border-radius: 10px;
+        background: #fff;
+        transition: border-color .18s ease, box-shadow .18s ease;
     }
 
     .cxts-input-group:focus-within {
-        border-color: rgba(3, 95, 199, .55);
-        background: #fff;
-        box-shadow: 0 0 0 .25rem rgba(3, 95, 199, .09);
+        border-color: rgba(3, 95, 199, .65);
+        box-shadow: 0 0 0 3px rgba(3, 95, 199, .09);
     }
 
     .cxts-input-group .input-group-text,
     .cxts-input-group .form-control,
     .cxts-input-group .btn {
-        min-height: 52px;
+        min-height: 48px;
         border: 0;
         background: transparent;
         box-shadow: none !important;
     }
 
-    .cxts-input-group .input-group-text { padding-left: 1rem; padding-right: .55rem; color: #708198; font-size: 1.15rem; }
-    .cxts-input-group .form-control { padding-left: .4rem; color: #142235; }
-    .cxts-input-group .btn { color: #708198; }
+    .cxts-input-group .input-group-text { padding: 0 8px 0 14px; color: #77869a; font-size: 1.1rem; }
+    .cxts-input-group .form-control { padding-left: 4px; color: #17263a; }
+    .cxts-input-group .btn { color: #77869a; }
 
     .cxts-signin-btn {
-        min-height: 54px;
+        min-height: 50px;
         border: 0;
-        border-radius: 1rem;
-        background: linear-gradient(135deg, var(--auth-blue), #034b9e);
-        box-shadow: 0 14px 28px rgba(3, 95, 199, .23);
+        border-radius: 10px;
+        background: var(--auth-blue);
         color: #fff;
-        font-weight: 700;
+        font-weight: 650;
+        box-shadow: 0 8px 18px rgba(3, 95, 199, .18);
     }
 
     .cxts-signin-btn:hover,
-    .cxts-signin-btn:focus {
-        background: linear-gradient(135deg, #0870e2, #0352ad);
-        color: #fff;
-        box-shadow: 0 16px 32px rgba(3, 95, 199, .3);
-    }
+    .cxts-signin-btn:focus { background: #0454af; color: #fff; }
 
     .cxts-security-note {
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: .55rem;
-        color: #718096;
-        font-size: .76rem;
+        gap: 7px;
+        margin-top: 22px;
+        color: #78879a;
+        font-size: .74rem;
+    }
+
+    .cxts-auth-footer { margin-top: 28px; }
+
+    @media (max-height: 680px) and (min-width: 992px) {
+        .cxts-auth-shell { min-height: 520px; }
+        .cxts-auth-story { padding: 30px 36px; }
+        .cxts-auth-logo { width: 110px; }
+        .cxts-auth-headline { font-size: 2rem; }
+        .cxts-auth-copy { margin-top: 12px; font-size: .9rem; }
+        .cxts-feature-list { padding-top: 18px; }
+        .cxts-feature-row + .cxts-feature-row { margin-top: 9px; }
+        .cxts-auth-form-panel { padding-top: 24px; padding-bottom: 24px; }
+        .cxts-auth-form { margin-top: 18px; }
+        .cxts-security-note { margin-top: 14px; }
+        .cxts-auth-footer { margin-top: 16px; }
     }
 
     @media (max-width: 991.98px) {
-        .cxts-auth-page .account-pages { padding: 1rem 0; }
-        .cxts-auth-shell { min-height: auto; border-radius: 1.5rem; }
+        .cxts-auth-page { background: #fff !important; }
+        .cxts-auth-page .account-pages { padding: 0; }
+        .cxts-auth-page .container { max-width: none; padding: 0 !important; }
+        .cxts-auth-shell { height: 100dvh; min-height: 0; border: 0; border-radius: 0; box-shadow: none; }
         .cxts-auth-story { display: none !important; }
-        .cxts-auth-form-panel { min-height: calc(100vh - 2rem); padding: 2.25rem 1.5rem; }
+        .cxts-auth-form-panel { height: 100dvh; padding: clamp(20px, 5vh, 42px) 24px; }
         .cxts-mobile-logo { display: block; }
+    }
+
+    @media (max-width: 575.98px) and (max-height: 700px) {
+        .cxts-mobile-logo { width: 96px; margin-bottom: 18px; }
+        .cxts-auth-title { font-size: 1.6rem; }
+        .cxts-auth-form { margin-top: 18px; }
+        .cxts-input-group { min-height: 46px; }
+        .cxts-input-group .input-group-text,
+        .cxts-input-group .form-control,
+        .cxts-input-group .btn { min-height: 44px; }
+        .cxts-signin-btn { min-height: 46px; }
+        .cxts-security-note { margin-top: 14px; }
+        .cxts-auth-footer { margin-top: 14px; }
     }
 </style>
 @endpush
 
 @section('content')
 <main class="account-pages">
-    <div class="container px-3">
+    <div class="container">
         <div class="cxts-auth-shell">
             <div class="row g-0 h-100">
-                <section class="col-lg-7 cxts-auth-story d-flex flex-column justify-content-between" aria-label="CXTS overview">
+                <section class="col-lg-6 cxts-auth-story d-flex flex-column justify-content-between" aria-label="CXTS overview">
+                    <img src="{{ asset('images/cxts-white.png') }}" class="cxts-auth-logo" alt="CXTS">
+
                     <div>
-                        <img src="{{ asset('images/cxts-white.png') }}" class="cxts-auth-logo" alt="CXTS">
-                        <div class="mt-5">
-                            <span class="cxts-auth-eyebrow">Service operations workspace</span>
-                            <h1 class="cxts-auth-headline">Satu ruang kerja untuk layanan yang lebih terukur.</h1>
-                            <p class="cxts-auth-copy mt-4 mb-0">
-                                Pantau ticket, approval, SLA, asset, dan inspeksi dalam alur kerja yang terhubung—dari laporan pertama hingga penyelesaian.
-                            </p>
-                        </div>
+                        <div class="cxts-auth-kicker">Service operations platform</div>
+                        <h1 class="cxts-auth-headline">Operasional layanan dalam satu sistem.</h1>
+                        <p class="cxts-auth-copy">Kelola ticket, approval, SLA, asset, dan inspeksi dengan alur yang jelas dan mudah dipantau.</p>
                     </div>
 
-                    <div class="row g-3 mt-5">
-                        <div class="col-sm-6">
-                            <div class="cxts-flow-card d-flex gap-3 align-items-center h-100">
-                                <span class="cxts-flow-icon"><iconify-icon icon="solar:ticket-sale-outline"></iconify-icon></span>
-                                <div><div class="fw-bold">Connected workflow</div><div class="small text-white text-opacity-50 mt-1">Ticket hingga resolusi dalam satu jejak.</div></div>
-                            </div>
+                    <div class="cxts-feature-list">
+                        <div class="cxts-feature-row">
+                            <span class="cxts-feature-icon"><iconify-icon icon="solar:ticket-outline"></iconify-icon></span>
+                            <span>Ticket dan assignment terpusat</span>
                         </div>
-                        <div class="col-sm-6">
-                            <div class="cxts-flow-card d-flex gap-3 align-items-center h-100">
-                                <span class="cxts-flow-icon"><iconify-icon icon="solar:shield-check-outline"></iconify-icon></span>
-                                <div><div class="fw-bold">Role-based access</div><div class="small text-white text-opacity-50 mt-1">Akses sesuai tanggung jawab tim.</div></div>
-                            </div>
+                        <div class="cxts-feature-row">
+                            <span class="cxts-feature-icon"><iconify-icon icon="solar:clock-circle-outline"></iconify-icon></span>
+                            <span>Pemantauan SLA dan progres pekerjaan</span>
+                        </div>
+                        <div class="cxts-feature-row">
+                            <span class="cxts-feature-icon"><iconify-icon icon="solar:shield-check-outline"></iconify-icon></span>
+                            <span>Akses pengguna berbasis peran</span>
                         </div>
                     </div>
                 </section>
 
-                <section class="col-lg-5 cxts-auth-form-panel">
+                <section class="col-lg-6 cxts-auth-form-panel">
                     <div class="cxts-auth-form-wrap">
                         <img src="{{ asset('images/cxts.png') }}" class="cxts-mobile-logo" alt="CXTS">
-                        <span class="badge bg-primary-subtle text-primary mb-3 px-3 py-2">Secure workspace</span>
-                        <h2 class="cxts-auth-title mb-2">Selamat datang kembali</h2>
-                        <p class="text-muted mb-0">Masuk menggunakan akun kerja CXTS Anda.</p>
+                        <h2 class="cxts-auth-title">Masuk ke CXTS</h2>
+                        <p class="text-muted mb-0">Gunakan akun kerja Anda untuk melanjutkan.</p>
 
                         @if ($errors->any())
-                            <div class="alert cxts-auth-alert d-flex gap-3 mt-4 mb-0" role="alert">
-                                <iconify-icon icon="solar:danger-triangle-outline" class="fs-4 flex-shrink-0"></iconify-icon>
+                            <div class="cxts-auth-alert d-flex gap-2" role="alert">
+                                <iconify-icon icon="solar:danger-triangle-outline" class="fs-5 flex-shrink-0"></iconify-icon>
                                 <div>
-                                    <div class="fw-bold mb-1">Login belum berhasil</div>
+                                    <div class="fw-semibold small">Login belum berhasil</div>
                                     <ul class="mb-0 ps-3 small">
                                         @foreach ($errors->all() as $message)
                                             <li>{{ $message }}</li>
@@ -272,7 +268,7 @@ class="authentication-bg cxts-auth-page"
                             </div>
                         @endif
 
-                        <form method="POST" action="{{ route('login') }}" class="mt-4">
+                        <form method="POST" action="{{ route('login') }}" class="cxts-auth-form">
                             @csrf
                             <div class="mb-3">
                                 <label for="email" class="cxts-field-label">Email</label>
@@ -281,7 +277,7 @@ class="authentication-bg cxts-auth-page"
                                     <input type="email" class="form-control" id="email" name="email" value="{{ old('email') }}"
                                         placeholder="nama@perusahaan.com" autocomplete="username" inputmode="email" required autofocus>
                                 </div>
-                                @error('email')<div class="text-danger small mt-2">{{ $message }}</div>@enderror
+                                @error('email')<div class="text-danger small mt-1">{{ $message }}</div>@enderror
                             </div>
 
                             <div class="mb-3">
@@ -297,10 +293,10 @@ class="authentication-bg cxts-auth-page"
                                         <iconify-icon id="password-icon" icon="solar:eye-outline" class="fs-5"></iconify-icon>
                                     </button>
                                 </div>
-                                @error('password')<div class="text-danger small mt-2">{{ $message }}</div>@enderror
+                                @error('password')<div class="text-danger small mt-1">{{ $message }}</div>@enderror
                             </div>
 
-                            <div class="d-flex justify-content-between align-items-center mb-4">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
                                 <div class="form-check">
                                     <input type="checkbox" class="form-check-input" id="remember-me" name="remember" value="1" @checked(old('remember'))>
                                     <label class="form-check-label small" for="remember-me">Ingat saya</label>
@@ -309,18 +305,16 @@ class="authentication-bg cxts-auth-page"
                             </div>
 
                             <div class="d-grid">
-                                <button class="btn cxts-signin-btn" type="submit">
-                                    <span class="d-inline-flex align-items-center gap-2">Masuk ke workspace <iconify-icon icon="solar:arrow-right-linear" class="fs-5"></iconify-icon></span>
-                                </button>
+                                <button class="btn cxts-signin-btn" type="submit">Masuk</button>
                             </div>
                         </form>
 
-                        <div class="cxts-security-note mt-4">
+                        <div class="cxts-security-note">
                             <iconify-icon icon="solar:shield-check-outline" class="fs-5 text-success"></iconify-icon>
-                            <span>Sesi dilindungi dan aktivitas dicatat untuk keamanan.</span>
+                            <span>Sesi dilindungi dan aktivitas login dicatat.</span>
                         </div>
 
-                        <p class="text-center text-muted small mb-0 mt-5">© {{ now()->year }} {{ config('app.name', 'CXTS') }}</p>
+                        <p class="cxts-auth-footer text-center text-muted small mb-0">© {{ now()->year }} {{ config('app.name', 'CXTS') }}</p>
                     </div>
                 </section>
             </div>
